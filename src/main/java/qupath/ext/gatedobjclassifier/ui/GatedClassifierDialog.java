@@ -195,19 +195,56 @@ public final class GatedClassifierDialog {
         // Wrap the content in a ScrollPane so (a) the dialog can shrink without
         // clipping controls and (b) if the user grows or shrinks the window,
         // a vertical scrollbar appears when the content doesn't fit instead of
-        // silently hiding buttons. Horizontal width always fits, and the
-        // viewport + scrollpane are transparent so the themed -fx-base from
-        // the BorderPane shows through any unused space below the content.
+        // silently hiding buttons. Horizontal width always fits.
         ScrollPane scroll = new ScrollPane(center);
         scroll.setFitToWidth(true);
         scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
         scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        scroll.setStyle("-fx-background: -fx-base; -fx-background-color: transparent;");
+        // The ScrollPane's .viewport and .corner sub-regions are painted white
+        // by modena.css - styling them requires an actual CSS selector (inline
+        // setStyle on the ScrollPane doesn't cascade into the viewport). The
+        // .gated-scroll class is targeted by a tiny stylesheet attached to the
+        // scene below so the viewport and corner become transparent and the
+        // themed -fx-base from the BorderPane shows through everywhere.
+        scroll.getStyleClass().add("gated-scroll");
         root.setCenter(scroll);
+
+        // Modena's .scroll-pane > .viewport rule is applied lazily - the
+        // first paint shows the default white viewport, and our data-URL
+        // stylesheet only takes visible effect after the first layout pass
+        // (e.g. when the user scrolls or resizes). Force one redundant CSS +
+        // layout pass after the stage is shown so the transparent viewport
+        // appears from the very first frame.
+        stage.setOnShown(shownEvt -> Platform.runLater(() -> {
+            scroll.applyCss();
+            scroll.requestLayout();
+        }));
         root.setBottom(buildButtonBar());
         BorderPane.setMargin(root.getBottom(), new Insets(0, 12, 12, 12));
 
         Scene scene = new Scene(root);
+        // Inline stylesheet (data URL) to neutralise modena's white viewport
+        // and corner painting on our ScrollPane. Needed because sub-region
+        // selectors can't be hit from an inline setStyle call.
+        String css = ".gated-scroll,"
+                + ".gated-scroll > .viewport,"
+                + ".gated-scroll > .corner {"
+                + "  -fx-background-color: transparent;"
+                + "  -fx-background-insets: 0;"
+                + "  -fx-padding: 0;"
+                + "}"
+                // Also neutralise the default white scrollbar track; scrollbar
+                // thumb still picks up the platform theme.
+                + ".gated-scroll > .scroll-bar,"
+                + ".gated-scroll > .scroll-bar > .track,"
+                + ".gated-scroll > .scroll-bar > .track-background {"
+                + "  -fx-background-color: transparent;"
+                + "  -fx-background-insets: 0;"
+                + "}";
+        scene.getStylesheets().add(
+                "data:text/css;base64,"
+                + java.util.Base64.getEncoder().encodeToString(
+                        css.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         stage.setScene(scene);
         // Keep width roomy enough for the longest label; let height size to
         // content. Users can shrink the window - the ScrollPane takes over.
