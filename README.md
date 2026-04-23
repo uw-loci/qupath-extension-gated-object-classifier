@@ -207,6 +207,44 @@ Bug reports and feature requests welcome via
 
 ---
 
+## Behaviour notes
+
+A few things worth knowing once you start using the extension day-to-day:
+
+- **Repeated Apply records repeated workflow steps.** Each click of Apply
+  appends a new step to the image's workflow history. That's intentional
+  - it preserves the order of operations - but if you only want one
+  step, only click Apply once per logical change.
+- **Workflow steps reference the classifier by name.** If you retrain or
+  rename the classifier later, re-running the recorded script will use
+  the *current* classifier with that name, not the one that was active
+  when the step was recorded. Save a renamed copy if you need to pin a
+  specific version.
+- **Undo + workflow history.** QuPath's `Edit > Undo` reverses the
+  classification but does **not** remove the recorded workflow step.
+  If you undo and don't want the step to re-fire, delete it manually
+  from the Workflow tab.
+- **`SELECTED_ONLY` is a no-op in batch.** When the recorded script
+  runs via `Run > Run for project`, there is no interactive selection,
+  so `source: "SELECTED_ONLY"` will classify nothing. The extension
+  logs a warning naming the image when this happens.
+- **Switching images closes the dialog.** If you change the active
+  image while the dialog is open, the dialog closes itself - this
+  prevents accidental Apply against the wrong image's hierarchy.
+- **The dialog stays in sync with the hierarchy.** Run a new cell
+  detection, apply another classifier, or reset classifications while
+  the dialog is open and the universe / class list / measurement list
+  refresh automatically.
+- **Reserved class name `(unclassified)`.** This exact string is used
+  by the recorded scripts to mean "objects without a class". If your
+  project genuinely has a class literally named `(unclassified)` it
+  will be matched as the null-class sentinel rather than that named
+  class - rename it.
+- **Class names containing `:`** are treated as derived classes by
+  QuPath's `PathClass.fromString` (the colon is a parent/child
+  separator). Avoid `:` in class names if you want them to round-trip
+  through the recorded script intact.
+
 ## Limitations (v0.1)
 
 - **Project-saved classifiers only.** Loading classifiers from a file path

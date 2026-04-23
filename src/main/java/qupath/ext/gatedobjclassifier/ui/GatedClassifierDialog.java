@@ -49,8 +49,10 @@ import qupath.lib.images.ImageData;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.classes.PathClass;
 import qupath.lib.objects.hierarchy.PathObjectHierarchy;
+import qupath.lib.objects.hierarchy.events.PathObjectHierarchyListener;
 import qupath.lib.objects.hierarchy.events.PathObjectSelectionListener;
 import qupath.lib.projects.Project;
+import javafx.beans.value.ChangeListener;
 
 import java.awt.image.BufferedImage;
 import java.text.MessageFormat;
@@ -90,6 +92,8 @@ public final class GatedClassifierDialog {
     private final ImageData<BufferedImage> imageData;
     private final Stage stage;
     private PathObjectSelectionListener hierarchySelectionListener;
+    private PathObjectHierarchyListener hierarchyChangeListener;
+    private ChangeListener<ImageData<BufferedImage>> imageSwitchListener;
 
     // --- Classifier section
     private final ComboBox<String> classifierCombo = new ComboBox<>();
@@ -436,13 +440,64 @@ public final class GatedClassifierDialog {
                 recomputePreview();
             });
             hierarchy.getSelectionModel().addPathObjectSelectionListener(hierarchySelectionListener);
-            stage.setOnHidden(e -> {
+
+            // Hierarchy structure / classification changes -> re-derive the
+            // classifier's universe so the dialog stays in sync if the user
+            // runs cell detection, applies another classifier, or resets
+            // classifications while we are open.
+            hierarchyChangeListener = event -> {
+                if (event == null || event.isChanging()) {
+                    return;
+                }
+                Platform.runLater(() -> {
+                    if (!stage.isShowing()) {
+                        return;
+                    }
+                    refreshUniverseFromClassifier();
+                });
+            };
+            hierarchy.addListener(hierarchyChangeListener);
+        }
+
+        // Image switch detection: if the user opens a different image while
+        // this dialog is up, close the dialog so they cannot accidentally
+        // Apply against the wrong (original) image's hierarchy.
+        imageSwitchListener = (obs, oldData, newData) -> {
+            if (newData != imageData) {
+                Platform.runLater(() -> {
+                    if (stage.isShowing()) {
+                        Dialogs.showInfoNotification(
+                                resources.getString("dialog.title"),
+                                resources.getString("warning.imageChanged"));
+                        stage.close();
+                    }
+                });
+            }
+        };
+        qupath.imageDataProperty().addListener(imageSwitchListener);
+
+        stage.setOnHidden(e -> {
+            if (hierarchy != null) {
                 if (hierarchySelectionListener != null) {
                     hierarchy.getSelectionModel().removePathObjectSelectionListener(hierarchySelectionListener);
                     hierarchySelectionListener = null;
                 }
-            });
-        }
+                if (hierarchyChangeListener != null) {
+                    hierarchy.removeListener(hierarchyChangeListener);
+                    hierarchyChangeListener = null;
+                }
+            }
+            if (imageSwitchListener != null) {
+                qupath.imageDataProperty().removeListener(imageSwitchListener);
+                imageSwitchListener = null;
+            }
+            // Free the (potentially large) cached object list explicitly so
+            // it is collectable as soon as the dialog is closed.
+            universeCache = Collections.emptyList();
+            universeClassesCache = Collections.emptyList();
+            universeMeasurementsCache = Collections.emptyList();
+            currentClassifier = null;
+        });
 
         // Classifier change -> reload caches
         classifierCombo.valueProperty().addListener((obs, oldV, newV) -> onClassifierSelected(newV));
@@ -513,12 +568,28 @@ public final class GatedClassifierDialog {
             recomputePreview();
             return;
         }
+        recomputeUniverse();
+    }
+
+    /**
+     * Re-derive {@link #universeCache} and the discovered class /
+     * measurement caches from the current classifier. Called whenever the
+     * classifier changes or the hierarchy structure changes underneath us.
+     */
+    private void refreshUniverseFromClassifier() {
+        if (currentClassifier == null) {
+            return;
+        }
+        recomputeUniverse();
+    }
+
+    private void recomputeUniverse() {
 
         try {
             Collection<PathObject> universe = currentClassifier.getCompatibleObjects(imageData);
             universeCache = (universe == null) ? Collections.emptyList() : new ArrayList<>(universe);
         } catch (RuntimeException e) {
-            logger.warn("Classifier '{}' threw while listing compatible objects", name, e);
+            logger.warn("Classifier threw while listing compatible objects", e);
             universeCache = Collections.emptyList();
         }
 
@@ -535,8 +606,8 @@ public final class GatedClassifierDialog {
         // Discover measurements (cap at 5000 objects to stay snappy)
         List<PathObject> sample = universeCache.size() > 5000
                 ? universeCache.subList(0, 5000) : universeCache;
-        Set<String> names = MeasurementFilter.discoverMeasurementNames(sample);
-        universeMeasurementsCache = new ArrayList<>(names);
+        Set<String> measurementNames = MeasurementFilter.discoverMeasurementNames(sample);
+        universeMeasurementsCache = new ArrayList<>(measurementNames);
 
         // Set classifier labels label
         Collection<PathClass> outputClasses = currentClassifier.getPathClasses();
@@ -636,9 +707,34 @@ public final class GatedClassifierDialog {
             }
             setWarning(reason);
         } else {
-            setWarning(null);
+            // Surface missing-feature warnings before Apply, not just after,
+            // so the user knows the classifier may not behave as expected.
+            String missing = describeMissingFeatures(currentGatedSnapshot());
+            setWarning(missing);
         }
         applyButton.setDisable(currentClassifier == null || gated == 0);
+    }
+
+    private String describeMissingFeatures(List<PathObject> gated) {
+        if (currentClassifier == null || gated == null || gated.isEmpty()) {
+            return null;
+        }
+        try {
+            var missing = currentClassifier.getMissingFeatures(imageData, gated);
+            if (missing == null || missing.isEmpty()) {
+                return null;
+            }
+            int total = missing.values().stream().mapToInt(Integer::intValue).sum();
+            String first = missing.keySet().iterator().next();
+            String suffix = missing.size() > 1
+                    ? " (+ " + (missing.size() - 1) + " more)"
+                    : "";
+            return MessageFormat.format(resources.getString("warning.missingFeatures.preview"),
+                    total, first, suffix);
+        } catch (Exception e) {
+            logger.debug("Could not compute missing features for preview", e);
+            return null;
+        }
     }
 
     private void setWarning(String text) {
@@ -752,11 +848,27 @@ public final class GatedClassifierDialog {
         if (currentClassifier == null) {
             return;
         }
+        String classifierName = classifierCombo.getValue();
+
+        // Reload the classifier from disk in case it has been edited or
+        // deleted since the dialog opened. This costs one IO read per Apply
+        // and keeps us honest about which model actually runs.
+        var freshClassifier = ClassifierLoader.load(qupath.getProject(), classifierName);
+        if (freshClassifier == null) {
+            Dialogs.showWarningNotification(
+                    resources.getString("notification.warning.title"),
+                    MessageFormat.format(resources.getString("warning.classifierGone"), classifierName));
+            populateClassifierNames();
+            currentClassifier = null;
+            recomputePreview();
+            return;
+        }
+        currentClassifier = freshClassifier;
+
         GatingCriteria criteria = buildCriteriaForPreview();
         Collection<PathObject> selection = imageData.getHierarchy() != null
                 ? imageData.getHierarchy().getSelectionModel().getSelectedObjects()
                 : Collections.emptyList();
-        String classifierName = classifierCombo.getValue();
 
         applyButton.setDisable(true);
         try {

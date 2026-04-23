@@ -55,8 +55,9 @@ public final class GatedObjectClassifierScripts {
      */
     public static int runGatedClassifier(String classifierName, Map<String, ?> opts) {
         ImageData<BufferedImage> imageData = QP.getCurrentImageData();
+        String imageLabel = describeImage(imageData);
         if (imageData == null) {
-            logger.warn("No current image - skipping gated classification for '{}'", classifierName);
+            logger.warn("[gated-classifier] No current image - skipping '{}'", classifierName);
             return 0;
         }
 
@@ -64,7 +65,8 @@ public final class GatedObjectClassifierScripts {
         try {
             classifier = QP.loadObjectClassifier(classifierName);
         } catch (IllegalArgumentException e) {
-            logger.warn("Unable to load classifier '{}': {}", classifierName, e.getMessage());
+            logger.error("[gated-classifier] [{}] Unable to load classifier '{}': {}",
+                    imageLabel, classifierName, e.getMessage());
             return 0;
         }
 
@@ -74,17 +76,51 @@ public final class GatedObjectClassifierScripts {
                 ? imageData.getHierarchy().getSelectionModel().getSelectedObjects()
                 : Collections.emptyList();
 
+        // Batch runs with SELECTED_ONLY are almost always a mistake - call it
+        // out clearly so the user can spot it in the project log.
+        if (criteria.source() == ObjectSourceMode.SELECTED_ONLY && (selected == null || selected.isEmpty())) {
+            logger.warn("[gated-classifier] [{}] source=SELECTED_ONLY but no objects are selected - "
+                    + "this is expected during batch (Run for project) and the step is a no-op",
+                    imageLabel);
+            return 0;
+        }
+
         GatedClassificationRunner.Result result = GatedClassificationRunner.run(
                 imageData, classifier, classifierName, selected, criteria, false);
 
         if (!result.ranSuccessfully()) {
-            logger.warn("Gated classification with '{}' did not classify any objects: {}",
-                    classifierName, result.warning == null ? "subset was empty" : result.warning);
+            logger.warn("[gated-classifier] [{}] '{}' classified 0 objects: {}",
+                    imageLabel, classifierName,
+                    result.warning == null ? "gated subset was empty" : result.warning);
         } else if (result.warning != null) {
-            logger.warn("Gated classification with '{}' completed with warning: {}",
-                    classifierName, result.warning);
+            logger.warn("[gated-classifier] [{}] '{}' classified {} objects, {} changed - {}",
+                    imageLabel, classifierName, result.nGated, result.nChanged, result.warning);
+        } else {
+            logger.info("[gated-classifier] [{}] '{}' classified {} objects, {} changed",
+                    imageLabel, classifierName, result.nGated, result.nChanged);
         }
         return result.nChanged;
+    }
+
+    private static String describeImage(ImageData<BufferedImage> imageData) {
+        if (imageData == null) {
+            return "no-image";
+        }
+        try {
+            var server = imageData.getServer();
+            if (server != null) {
+                String name = server.getMetadata() != null ? server.getMetadata().getName() : null;
+                if (name == null || name.isBlank()) {
+                    name = server.getPath();
+                }
+                if (name != null && !name.isBlank()) {
+                    return name;
+                }
+            }
+        } catch (Exception e) {
+            // fall through
+        }
+        return "image";
     }
 
     /** Visible for testing. Maps a Groovy options map to a {@link GatingCriteria}. */
