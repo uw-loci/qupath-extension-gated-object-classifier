@@ -344,6 +344,11 @@ public final class GatedClassifierDialog {
 
         Hyperlink docLink = new Hyperlink(resources.getString("label.preview.documentation"));
         docLink.setTooltip(new Tooltip(resources.getString("tooltip.documentation")));
+        // The default Hyperlink colour in JavaFX modena is a dark navy that is
+        // nearly invisible on QuPath's dark theme. Use the theme accent colour
+        // (defined by atlantafx / overridden by QuPath themes) and force-bold
+        // so the link is legible on both light and dark backgrounds.
+        docLink.setStyle("-fx-text-fill: -fx-accent; -fx-font-weight: bold;");
         docLink.setOnAction(e -> openDocumentation());
 
         HBox row = new HBox(10, previewLabel, showSelectionButton, spacer(), docLink);
