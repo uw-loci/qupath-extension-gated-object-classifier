@@ -508,6 +508,17 @@ public final class GatedClassifierDialog {
         applyButton.setDisable(true);
     }
 
+    /**
+     * Matches any *prefix* of a legal Java double literal, so the user can
+     * type a number a character at a time without the filter dropping
+     * intermediate states like "." (typing ".25"), "-" (typing "-3"),
+     * "1e", or "1e-" on the way to "1e-5". Values that get through the
+     * filter are not necessarily valid - that is checked separately when
+     * the value is read.
+     */
+    private static final java.util.regex.Pattern NUMERIC_PREFIX =
+            java.util.regex.Pattern.compile("^-?(\\d+\\.?\\d*|\\.\\d*|\\d*\\.)?([eE]-?\\d*)?$");
+
     private void configureNumericField(TextField field) {
         DoubleStringConverter converter = new DoubleStringConverter() {
             @Override public Double fromString(String value) {
@@ -524,15 +535,14 @@ public final class GatedClassifierDialog {
         };
         field.setTextFormatter(new TextFormatter<>(converter, null, change -> {
             String newText = change.getControlNewText();
-            if (newText.isEmpty() || newText.equals("-") || newText.equals(".") || newText.equals("-.")) {
+            // Always allow deletion-to-empty and any in-progress numeric
+            // prefix. Final parsing happens in parseField() when the value
+            // is actually read - so a stuck-at-"." field simply produces
+            // no MeasurementFilter and Apply stays disabled, no harm done.
+            if (newText.isEmpty() || NUMERIC_PREFIX.matcher(newText).matches()) {
                 return change;
             }
-            try {
-                Double.parseDouble(newText);
-                return change;
-            } catch (NumberFormatException e) {
-                return null;
-            }
+            return null;
         }));
         field.setPrefColumnCount(8);
     }
