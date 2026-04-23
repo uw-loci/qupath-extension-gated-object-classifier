@@ -14,6 +14,7 @@ import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TextField;
@@ -172,13 +173,15 @@ public final class GatedClassifierDialog {
 
         BorderPane root = new BorderPane();
         // Pick up the active theme's background colour (light or dark) so the
-        // BorderPane and button bar don't show modena's white default behind
-        // the themed TitledPanes. QuPath sets its theme via
-        // Application.setUserAgentStylesheet, which defines -fx-base.
+        // BorderPane, ScrollPane viewport, and button bar don't show modena's
+        // white default behind the themed TitledPanes.
         root.setStyle("-fx-background-color: -fx-base;");
+
         VBox center = new VBox(10);
         center.setPadding(new Insets(12));
-
+        // VBox must be transparent so the themed -fx-base shows through any
+        // empty space when the dialog is taller than its content.
+        center.setStyle("-fx-background-color: transparent;");
         center.getChildren().addAll(
                 buildHeader(),
                 new Separator(),
@@ -188,14 +191,28 @@ public final class GatedClassifierDialog {
                 buildOptionsSection(),
                 buildPreviewSection()
         );
-        root.setCenter(center);
+
+        // Wrap the content in a ScrollPane so (a) the dialog can shrink without
+        // clipping controls and (b) if the user grows or shrinks the window,
+        // a vertical scrollbar appears when the content doesn't fit instead of
+        // silently hiding buttons. Horizontal width always fits, and the
+        // viewport + scrollpane are transparent so the themed -fx-base from
+        // the BorderPane shows through any unused space below the content.
+        ScrollPane scroll = new ScrollPane(center);
+        scroll.setFitToWidth(true);
+        scroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        scroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
+        scroll.setStyle("-fx-background: -fx-base; -fx-background-color: transparent;");
+        root.setCenter(scroll);
         root.setBottom(buildButtonBar());
         BorderPane.setMargin(root.getBottom(), new Insets(0, 12, 12, 12));
 
         Scene scene = new Scene(root);
         stage.setScene(scene);
+        // Keep width roomy enough for the longest label; let height size to
+        // content. Users can shrink the window - the ScrollPane takes over.
         stage.setMinWidth(520);
-        stage.setMinHeight(640);
+        stage.setMinHeight(420);
         stage.sizeToScene();
 
         wireBindings();
