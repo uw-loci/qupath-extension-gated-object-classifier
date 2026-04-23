@@ -182,6 +182,18 @@ public final class GatedClassifierDialog {
         BorderPane.setMargin(root.getBottom(), new Insets(0, 12, 12, 12));
 
         Scene scene = new Scene(root);
+        // Inherit QuPath's stylesheets so the dialog matches the active theme
+        // (light/dark). Without this the new Scene starts with the JavaFX
+        // default modena stylesheet, causing white panels in dark mode that
+        // only refresh once a control state changes.
+        try {
+            var parentStage = qupath.getStage();
+            if (parentStage != null && parentStage.getScene() != null) {
+                scene.getStylesheets().setAll(parentStage.getScene().getStylesheets());
+            }
+        } catch (Exception e) {
+            logger.debug("Could not inherit QuPath stylesheets: {}", e.getMessage());
+        }
         stage.setScene(scene);
         stage.setMinWidth(520);
         stage.setMinHeight(640);
@@ -259,9 +271,11 @@ public final class GatedClassifierDialog {
         Label classTitle = new Label(resources.getString("label.filter.class.title"));
         classTitle.setStyle("-fx-font-weight: bold;");
         classListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-        classListView.setPrefHeight(110);
+        classListView.setPrefHeight(160);
+        classListView.setMinHeight(120);
         classListView.setPlaceholder(new Label(resources.getString("label.filter.class.placeholder")));
         classListView.setTooltip(new Tooltip(resources.getString("tooltip.classFilter")));
+        VBox.setVgrow(classListView, Priority.ALWAYS);
         includeUnclassifiedCheck.setTooltip(new Tooltip(resources.getString("tooltip.classFilter.unclassified")));
         Button classClear = new Button(resources.getString("label.filter.class.clear"));
         classClear.setOnAction(e -> classListView.getSelectionModel().clearSelection());
