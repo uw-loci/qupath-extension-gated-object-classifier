@@ -165,6 +165,11 @@ public final class GatedClassifierDialog {
         stage.initModality(Modality.NONE);
 
         BorderPane root = new BorderPane();
+        // Pick up the active theme's background colour (light or dark) so the
+        // BorderPane and button bar don't show modena's white default behind
+        // the themed TitledPanes. QuPath sets its theme via
+        // Application.setUserAgentStylesheet, which defines -fx-base.
+        root.setStyle("-fx-background-color: -fx-base;");
         VBox center = new VBox(10);
         center.setPadding(new Insets(12));
 
@@ -182,18 +187,6 @@ public final class GatedClassifierDialog {
         BorderPane.setMargin(root.getBottom(), new Insets(0, 12, 12, 12));
 
         Scene scene = new Scene(root);
-        // Inherit QuPath's stylesheets so the dialog matches the active theme
-        // (light/dark). Without this the new Scene starts with the JavaFX
-        // default modena stylesheet, causing white panels in dark mode that
-        // only refresh once a control state changes.
-        try {
-            var parentStage = qupath.getStage();
-            if (parentStage != null && parentStage.getScene() != null) {
-                scene.getStylesheets().setAll(parentStage.getScene().getStylesheets());
-            }
-        } catch (Exception e) {
-            logger.debug("Could not inherit QuPath stylesheets: {}", e.getMessage());
-        }
         stage.setScene(scene);
         stage.setMinWidth(520);
         stage.setMinHeight(640);
