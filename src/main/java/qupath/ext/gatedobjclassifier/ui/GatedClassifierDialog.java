@@ -49,6 +49,7 @@ import qupath.lib.images.ImageData;
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.classes.PathClass;
 import qupath.lib.objects.hierarchy.PathObjectHierarchy;
+import qupath.lib.objects.hierarchy.events.PathObjectSelectionListener;
 import qupath.lib.projects.Project;
 
 import java.awt.image.BufferedImage;
@@ -88,6 +89,7 @@ public final class GatedClassifierDialog {
     private final QuPathGUI qupath;
     private final ImageData<BufferedImage> imageData;
     private final Stage stage;
+    private PathObjectSelectionListener hierarchySelectionListener;
 
     // --- Classifier section
     private final ComboBox<String> classifierCombo = new ComboBox<>();
@@ -421,14 +423,24 @@ public final class GatedClassifierDialog {
         classListView.getSelectionModel().getSelectedItems().addListener(
                 (javafx.collections.ListChangeListener<PathClass>) change -> recomputePreview());
 
-        // Hierarchy selection -> source counts and preview
+        // Hierarchy selection -> source counts and preview. Hold a reference
+        // so we can detach on close - otherwise the listener leaks and keeps
+        // firing against this dialog's controls after the user closes it.
         var hierarchy = imageData.getHierarchy();
         if (hierarchy != null) {
-            hierarchy.getSelectionModel().addPathObjectSelectionListener((src, oldSel, newSel) -> {
-                Platform.runLater(() -> {
-                    refreshSourceCounts();
-                    recomputePreview();
-                });
+            hierarchySelectionListener = (src, oldSel, newSel) -> Platform.runLater(() -> {
+                if (!stage.isShowing()) {
+                    return;
+                }
+                refreshSourceCounts();
+                recomputePreview();
+            });
+            hierarchy.getSelectionModel().addPathObjectSelectionListener(hierarchySelectionListener);
+            stage.setOnHidden(e -> {
+                if (hierarchySelectionListener != null) {
+                    hierarchy.getSelectionModel().removePathObjectSelectionListener(hierarchySelectionListener);
+                    hierarchySelectionListener = null;
+                }
             });
         }
 
