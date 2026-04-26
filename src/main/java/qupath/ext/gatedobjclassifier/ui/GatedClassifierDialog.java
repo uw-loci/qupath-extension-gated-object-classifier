@@ -277,6 +277,7 @@ public final class GatedClassifierDialog {
         Label label = new Label(resources.getString("label.classifier.combo"));
         classifierCombo.setMaxWidth(Double.MAX_VALUE);
         classifierCombo.setTooltip(new Tooltip(resources.getString("tooltip.classifier")));
+        label.setTooltip(new Tooltip(resources.getString("tooltip.classifier")));
         HBox.setHgrow(classifierCombo, Priority.ALWAYS);
         row.getChildren().addAll(label, classifierCombo);
 
@@ -362,12 +363,18 @@ public final class GatedClassifierDialog {
         GridPane grid = new GridPane();
         grid.setHgap(8);
         grid.setVgap(6);
-        grid.add(new Label(resources.getString("label.filter.measurement.combo")), 0, 0);
+        Label measComboLabel = new Label(resources.getString("label.filter.measurement.combo"));
+        measComboLabel.setTooltip(new Tooltip(resources.getString("tooltip.measurement.combo")));
+        grid.add(measComboLabel, 0, 0);
         grid.add(measurementCombo, 1, 0, 3, 1);
         GridPane.setHgrow(measurementCombo, Priority.ALWAYS);
-        grid.add(new Label(resources.getString("label.filter.measurement.op")), 0, 1);
+        Label measOpLabel = new Label(resources.getString("label.filter.measurement.op"));
+        measOpLabel.setTooltip(new Tooltip(resources.getString("tooltip.measurement.op")));
+        grid.add(measOpLabel, 0, 1);
         grid.add(comparatorCombo, 1, 1);
-        grid.add(new Label(resources.getString("label.filter.measurement.value")), 2, 1);
+        Label measValueLabel = new Label(resources.getString("label.filter.measurement.value"));
+        measValueLabel.setTooltip(new Tooltip(resources.getString("tooltip.measurement.value")));
+        grid.add(measValueLabel, 2, 1);
         grid.add(value1Field, 3, 1);
         grid.add(value2Label, 2, 2);
         grid.add(value2Field, 3, 2);
