@@ -31,9 +31,14 @@ import java.util.Set;
  * <ul>
  *   <li>{@code source}      - one of {@code "ALL_COMPATIBLE"},
  *       {@code "SELECTED_ONLY"}, {@code "CUSTOM"}.</li>
- *   <li>{@code classes}     - {@code List<String>} of {@link PathClass}
- *       names to include (CUSTOM only); the literal
- *       {@code "(unclassified)"} matches objects with no class.</li>
+ *   <li>{@code classes}     - {@code List} of {@link PathClass} entries
+ *       to include (CUSTOM only). Each entry is either a String (parsed via
+ *       {@code PathClass.fromString}, which treats ":" as a derived-class
+ *       separator) or a nested {@code List<String>} of component names
+ *       (parsed via {@code PathClass.fromCollection}, which preserves each
+ *       element verbatim - use this form for class names that themselves
+ *       contain ":"). The literal {@code "(unclassified)"} matches objects
+ *       with no class.</li>
  *   <li>{@code measurement} - measurement name (CUSTOM only).</li>
  *   <li>{@code op}          - {@link Comparator} name, e.g. {@code "GT"}.</li>
  *   <li>{@code value1}, {@code value2} - numeric thresholds.</li>
@@ -139,18 +144,44 @@ public final class GatedObjectClassifierScripts {
             }
         }
 
-        List<String> classNames = readStringList(opts.get("classes"));
-        if (classNames != null && !classNames.isEmpty()) {
+        Object classesRaw = opts.get("classes");
+        if (classesRaw != null) {
             Set<PathClass> classes = new LinkedHashSet<>();
             boolean includeUnclassified = false;
-            for (String label : classNames) {
-                if (label == null) continue;
-                String trimmed = label.trim();
-                if (trimmed.isEmpty()) continue;
-                if (ClassFilter.UNCLASSIFIED_LITERAL.equalsIgnoreCase(trimmed)) {
-                    includeUnclassified = true;
+            for (Object entry : readClassEntries(classesRaw)) {
+                if (entry == null) continue;
+                if (entry instanceof Collection<?> coll) {
+                    // Atomic-per-element form: each element is one component
+                    // name, never split on ':'. Lets class names like
+                    // "CD3+: CD8+" round-trip as a single class.
+                    List<String> components = new ArrayList<>();
+                    for (Object o : coll) {
+                        if (o == null) continue;
+                        String s = o.toString().trim();
+                        if (!s.isEmpty()) components.add(s);
+                    }
+                    if (components.isEmpty()) continue;
+                    if (components.size() == 1
+                            && ClassFilter.UNCLASSIFIED_LITERAL.equalsIgnoreCase(components.get(0))) {
+                        includeUnclassified = true;
+                    } else {
+                        classes.add(PathClass.fromCollection(components));
+                    }
                 } else {
-                    classes.add(PathClass.fromString(trimmed));
+                    // Plain String entry: legacy / hand-edited form.
+                    // Parsed via fromString, which splits on ':'.
+                    String trimmed = entry.toString().trim();
+                    if (trimmed.isEmpty()) continue;
+                    if (ClassFilter.UNCLASSIFIED_LITERAL.equalsIgnoreCase(trimmed)) {
+                        includeUnclassified = true;
+                    } else {
+                        if (trimmed.contains(":")) {
+                            logger.warn("[gated-classifier] Class '{}' contains ':' and will be parsed as a derived class. "
+                                    + "To treat it as a single class, encode it as a list, e.g. [\"{}\"].",
+                                    trimmed, trimmed);
+                        }
+                        classes.add(PathClass.fromString(trimmed));
+                    }
                 }
             }
             ClassFilter cf = ClassFilter.of(classes, includeUnclassified);
@@ -185,27 +216,32 @@ public final class GatedObjectClassifierScripts {
         return b.build();
     }
 
-    private static List<String> readStringList(Object raw) {
+    /**
+     * Iterate the raw {@code classes} option without flattening nested
+     * collections, so each entry can be inspected as either a String
+     * (legacy form, parsed via {@link PathClass#fromString}) or a
+     * Collection (atomic-per-element form, reconstructed via
+     * {@link PathClass#fromCollection}).
+     */
+    private static List<Object> readClassEntries(Object raw) {
         if (raw == null) {
-            return null;
+            return Collections.emptyList();
         }
         if (raw instanceof Collection) {
-            List<String> list = new ArrayList<>();
+            List<Object> list = new ArrayList<>();
             for (Object o : (Collection<?>) raw) {
-                if (o != null) {
-                    list.add(o.toString());
-                }
+                list.add(o);
             }
             return list;
         }
-        if (raw instanceof String[]) {
-            List<String> list = new ArrayList<>();
-            for (String s : (String[]) raw) {
-                if (s != null) list.add(s);
+        if (raw instanceof Object[]) {
+            List<Object> list = new ArrayList<>();
+            for (Object o : (Object[]) raw) {
+                list.add(o);
             }
             return list;
         }
-        return Collections.singletonList(raw.toString());
+        return Collections.singletonList(raw);
     }
 
     private static double readDouble(Object raw, double fallback) {

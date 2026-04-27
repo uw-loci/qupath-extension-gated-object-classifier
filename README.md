@@ -237,10 +237,12 @@ A few things worth knowing once you start using the extension day-to-day:
   project genuinely has a class literally named `(unclassified)` it
   will be matched as the null-class sentinel rather than that named
   class - rename it.
-- **Class names containing `:`** are treated as derived classes by
-  QuPath's `PathClass.fromString` (the colon is a parent/child
-  separator). Avoid `:` in class names if you want them to round-trip
-  through the recorded script intact.
+- **Multi-part class names round-trip intact.** Each selected class is
+  recorded as a list of its component names (e.g. `["Tumor", "Positive"]`
+  for `Tumor: Positive`) and reconstructed via `PathClass.fromCollection`,
+  so the colon used by QuPath as a parent/child separator never
+  ambiguates a re-run. Plain-string entries from hand-edited scripts are
+  still accepted and parsed via `PathClass.fromString`.
 
 ## Limitations (v0.1)
 

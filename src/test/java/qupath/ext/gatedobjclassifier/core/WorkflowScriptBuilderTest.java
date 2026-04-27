@@ -49,7 +49,9 @@ class WorkflowScriptBuilderTest {
         String script = WorkflowScriptBuilder.buildScript("MyClassifier", crit);
 
         assertThat(script).contains("source : \"CUSTOM\"");
-        assertThat(script).contains("classes : [\"Tumor\", \"Stroma\", \"(unclassified)\"]");
+        // Classes are encoded as nested lists of component names so that colons
+        // in class names cannot be misinterpreted by PathClass.fromString.
+        assertThat(script).contains("classes : [[\"Tumor\"], [\"Stroma\"], \"(unclassified)\"]");
         assertThat(script).contains("measurement : \"DAB: Cell: Mean\"");
         assertThat(script).contains("op : \"LT\"");
         assertThat(script).contains("value1 : 0.25");
@@ -99,6 +101,20 @@ class WorkflowScriptBuilderTest {
         String script = WorkflowScriptBuilder.buildScript("c", crit);
         assertThat(script).startsWith("import qupath.ext.gatedobjclassifier.scripting.GatedObjectClassifierScripts");
         assertThat(script.trim()).endsWith(")");
+    }
+
+    @Test
+    void derivedClassIsEncodedAsListOfComponents() {
+        PathClass derived = PathClass.fromString("Tumor: Positive");
+        Set<PathClass> classes = new LinkedHashSet<>();
+        classes.add(derived);
+        ClassFilter cf = ClassFilter.of(classes, false);
+        GatingCriteria crit = GatingCriteria.builder()
+                .source(ObjectSourceMode.CUSTOM)
+                .classFilter(cf)
+                .build();
+        String script = WorkflowScriptBuilder.buildScript("c", crit);
+        assertThat(script).contains("classes : [[\"Tumor\", \"Positive\"]]");
     }
 
     @Test

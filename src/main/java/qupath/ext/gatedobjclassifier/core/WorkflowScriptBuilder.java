@@ -1,10 +1,10 @@
 package qupath.ext.gatedobjclassifier.core;
 
+import qupath.lib.objects.classes.PathClassTools;
 import qupath.lib.plugins.workflow.DefaultScriptableWorkflowStep;
 import qupath.lib.plugins.workflow.WorkflowStep;
 
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.List;
 
 /**
  * Builds the Groovy {@link WorkflowStep} that the runner appends to the
@@ -41,7 +41,7 @@ public final class WorkflowScriptBuilder {
         if (source == ObjectSourceMode.CUSTOM) {
             criteria.classFilter().ifPresent(cf -> {
                 if (!cf.isAcceptAll()) {
-                    appendEntry(sb, false, "classes", listLiteral(classifierLabels(cf)));
+                    appendEntry(sb, false, "classes", classesLiteral(cf));
                 }
             });
             criteria.measurementFilter().ifPresent(mf -> {
@@ -74,18 +74,35 @@ public final class WorkflowScriptBuilder {
         return false;
     }
 
-    private static Set<String> classifierLabels(ClassFilter cf) {
-        Set<String> labels = new LinkedHashSet<>();
+    /**
+     * Render the {@code classes} list literal. Each PathClass is encoded as a
+     * Groovy list of its component names (via {@link PathClassTools#splitNames})
+     * so that classes whose own names contain ":" round-trip as a single atomic
+     * class instead of being re-parsed as derived classes by
+     * {@code PathClass.fromString}. The "(unclassified)" marker stays a String.
+     */
+    private static String classesLiteral(ClassFilter cf) {
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
         for (var pc : cf.pathClasses()) {
-            labels.add(pc.toString());
+            if (!first) sb.append(", ");
+            first = false;
+            List<String> components = PathClassTools.splitNames(pc);
+            if (components.isEmpty()) {
+                sb.append(quote(pc.toString()));
+            } else {
+                sb.append(stringListLiteral(components));
+            }
         }
         if (cf.includesUnclassified()) {
-            labels.add(ClassFilter.UNCLASSIFIED_LITERAL);
+            if (!first) sb.append(", ");
+            sb.append(quote(ClassFilter.UNCLASSIFIED_LITERAL));
         }
-        return labels;
+        sb.append(']');
+        return sb.toString();
     }
 
-    private static String listLiteral(Set<String> values) {
+    private static String stringListLiteral(List<String> values) {
         StringBuilder sb = new StringBuilder("[");
         boolean first = true;
         for (String v : values) {
