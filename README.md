@@ -13,9 +13,26 @@ This pattern was originally explored in
 and discussed in
 [this image.sc forum thread](https://forum.image.sc/t/feature-request-apply-classifiers-to-only-some-selected-objects/86383).
 
+![Gated Object Classifier dialog](docs/screenshot-dialog.png)
+
 ---
 
-## Why use this?
+## Install
+
+1. Download the extension JAR from the
+   [Releases page](https://github.com/uw-loci/qupath-extension-gated-object-classifier/releases).
+2. Drag the JAR into a running QuPath window. QuPath will offer to copy it
+   into your extensions folder; accept.
+3. Restart QuPath.
+
+The extension appears under `Extensions > Gated Object Classifier`.
+
+**Requires:** QuPath 0.6.0 or later.
+
+---
+
+<details>
+<summary><b>Why use this?</b></summary>
 
 QuPath's stock "Object classification > Apply classifier" command always runs
 on every compatible object in the image. That makes it awkward to:
@@ -31,25 +48,10 @@ This extension adds a single dialog that lets you define the subset
 declaratively, with a live preview of how many objects are about to be
 classified.
 
----
+</details>
 
-## Install
-
-1. Download the extension JAR from the
-   [Releases page](https://github.com/uw-loci/qupath-extension-gated-object-classifier/releases)
-   (or build it locally with `./gradlew shadowJar` - see "Build from source"
-   below).
-2. Drag the JAR into a running QuPath window. QuPath will offer to copy it
-   into your extensions folder; accept.
-3. Restart QuPath.
-
-The extension appears under `Extensions > Gated Object Classifier`.
-
-**Requires:** QuPath 0.6.0 or later.
-
----
-
-## Use
+<details>
+<summary><b>How to use it</b></summary>
 
 1. Open a project and the image you want to classify. Make sure the project
    has at least one saved object classifier
@@ -78,13 +80,15 @@ The extension appears under `Extensions > Gated Object Classifier`.
    refreshes, and a workflow step named `Apply gated object classifier`
    is appended to the image's workflow history.
 
-### Screenshot
+**Keyboard shortcuts in the dialog**
 
-![Gated Object Classifier dialog](docs/screenshot-dialog.png)
+- `Enter` -> Apply
+- `Esc` -> Close
 
----
+</details>
 
-## Workflow / scripting
+<details>
+<summary><b>Workflow / scripting</b></summary>
 
 Each time you click Apply, QuPath records the operation as a reusable step
 so you can batch the same classification across an entire project later.
@@ -124,7 +128,7 @@ GatedObjectClassifierScripts.runGatedClassifier(
     "T-cell-classifier",
     [
         source        : "CUSTOM",
-        classes       : ["Tumor", "Stroma", "(unclassified)"],
+        classes       : [["Tumor"], ["Stroma"], "(unclassified)"],
         measurement   : "DAB: Cell: Mean",
         op            : "LT",
         value1        : 0.25,
@@ -153,7 +157,7 @@ GatedObjectClassifierScripts.runGatedClassifier(
 | Key            | Type                | Notes                                                                 |
 |----------------|---------------------|-----------------------------------------------------------------------|
 | `source`       | `String`            | `"ALL_COMPATIBLE"`, `"SELECTED_ONLY"`, `"CUSTOM"` (required).         |
-| `classes`      | `List<String>`      | CUSTOM only. Class names. Use `"(unclassified)"` for null-class.      |
+| `classes`      | `List`              | CUSTOM only. Each entry is either a `List<String>` of component names (recommended; reconstructed via `PathClass.fromCollection`, so colons in derived class chains round-trip safely) or a plain `String` (parsed via `PathClass.fromString`). Use `"(unclassified)"` for null-class. |
 | `measurement`  | `String`            | CUSTOM only. Measurement name as it appears in the measurement table. |
 | `op`           | `String`            | One of `LT, LE, GT, GE, EQ, NE, BETWEEN`.                             |
 | `value1`       | `Number`            | Primary threshold.                                                    |
@@ -163,48 +167,10 @@ GatedObjectClassifierScripts.runGatedClassifier(
 Unknown keys are ignored. Missing required keys default to a no-op
 (logged as a warning).
 
----
+</details>
 
-## Build from source
-
-```bash
-git clone https://github.com/uw-loci/qupath-extension-gated-object-classifier
-cd qupath-extension-gated-object-classifier
-./gradlew shadowJar
-# JAR appears under build/libs/
-```
-
-Requires JDK 21 (set `JAVA_HOME` or pass
-`-Dorg.gradle.java.home=/path/to/jdk21` if your default JDK is newer).
-
-Run unit tests with `./gradlew test`. The tests are pure Java and do not
-require a running QuPath instance.
-
-### Keyboard shortcuts in the dialog
-
-- **Enter** -> Apply
-- **Esc** -> Close
-
----
-
-## Contributing
-
-To add or refresh the dialog screenshot:
-
-1. Open a real image in QuPath inside a project that has at least one
-   saved object classifier.
-2. Open `Extensions > Gated Object Classifier > Apply Gated Classification...`
-   and arrange a representative configuration.
-3. Capture the dialog (e.g. with the OS screenshot tool).
-4. Save the image as `docs/screenshot-dialog.png` in this repository
-   and remove the screenshot caveat in the Use section above.
-
-Bug reports and feature requests welcome via
-[GitHub Issues](https://github.com/uw-loci/qupath-extension-gated-object-classifier/issues).
-
----
-
-## Behaviour notes
+<details>
+<summary><b>Behaviour notes</b></summary>
 
 A few things worth knowing once you start using the extension day-to-day:
 
@@ -244,7 +210,10 @@ A few things worth knowing once you start using the extension day-to-day:
   ambiguates a re-run. Plain-string entries from hand-edited scripts are
   still accepted and parsed via `PathClass.fromString`.
 
-## Limitations (v0.1)
+</details>
+
+<details>
+<summary><b>Limitations (v0.1)</b></summary>
 
 - **Project-saved classifiers only.** Loading classifiers from a file path
   outside the project is not yet exposed in the GUI; you can still do it by
@@ -258,8 +227,48 @@ A few things worth knowing once you start using the extension day-to-day:
 These are tracked for follow-up; please file a GitHub issue if you need any
 of them sooner.
 
+</details>
+
+<details>
+<summary><b>Build from source</b></summary>
+
+```bash
+git clone https://github.com/uw-loci/qupath-extension-gated-object-classifier
+cd qupath-extension-gated-object-classifier
+./gradlew shadowJar
+# JAR appears under build/libs/
+```
+
+Requires JDK 21 (set `JAVA_HOME` or pass
+`-Dorg.gradle.java.home=/path/to/jdk21` if your default JDK is newer).
+
+Run unit tests with `./gradlew test`. The tests are pure Java and do not
+require a running QuPath instance.
+
+</details>
+
+<details>
+<summary><b>Contributing</b></summary>
+
+Bug reports and feature requests welcome via
+[GitHub Issues](https://github.com/uw-loci/qupath-extension-gated-object-classifier/issues).
+Pull requests are also welcome - please open an issue first if you are
+planning a substantial change so we can discuss scope.
+
+To refresh the dialog screenshot:
+
+1. Open a real image in QuPath inside a project that has at least one
+   saved object classifier.
+2. Open `Extensions > Gated Object Classifier > Apply Gated Classification...`
+   and arrange a representative configuration.
+3. Capture the dialog (e.g. with the OS screenshot tool).
+4. Save the image as `docs/screenshot-dialog.png` in this repository.
+
+</details>
+
 ---
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Apache License 2.0. Copyright 2026 Regents of the University of
+Wisconsin-Madison. See [LICENSE](LICENSE).
