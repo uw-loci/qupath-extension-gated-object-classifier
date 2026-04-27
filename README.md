@@ -82,9 +82,6 @@ The extension appears under `Extensions > Gated Object Classifier`.
 
 ![Gated Object Classifier dialog](docs/screenshot-dialog.png)
 
-*(Screenshot to be added once the extension is installed in a real QuPath
-session.)*
-
 ---
 
 ## Workflow / scripting
