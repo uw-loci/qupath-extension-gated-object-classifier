@@ -9,7 +9,7 @@ plugins {
 qupathExtension {
     name = "qupath-extension-gated-object-classifier"
     group = "io.github.michaelsnelson"
-    version = "0.1.0"
+    version = "0.1.1"
     description = "Apply a saved object classifier to a gated subset of objects in QuPath."
     automaticModule = "io.github.michaelsnelson.extension.gatedobjectclassifier"
 }
