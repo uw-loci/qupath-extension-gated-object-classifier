@@ -36,7 +36,7 @@ classified.
 ## Install
 
 1. Download the extension JAR from the
-   [Releases page](https://github.com/MichaelSNelson/qupath-extension-gated-object-classifier/releases)
+   [Releases page](https://github.com/uw-loci/qupath-extension-gated-object-classifier/releases)
    (or build it locally with `./gradlew shadowJar` - see "Build from source"
    below).
 2. Drag the JAR into a running QuPath window. QuPath will offer to copy it
@@ -168,7 +168,7 @@ Unknown keys are ignored. Missing required keys default to a no-op
 ## Build from source
 
 ```bash
-git clone https://github.com/MichaelSNelson/qupath-extension-gated-object-classifier
+git clone https://github.com/uw-loci/qupath-extension-gated-object-classifier
 cd qupath-extension-gated-object-classifier
 ./gradlew shadowJar
 # JAR appears under build/libs/
@@ -200,7 +200,7 @@ To add or refresh the dialog screenshot:
    and remove the screenshot caveat in the Use section above.
 
 Bug reports and feature requests welcome via
-[GitHub Issues](https://github.com/MichaelSNelson/qupath-extension-gated-object-classifier/issues).
+[GitHub Issues](https://github.com/uw-loci/qupath-extension-gated-object-classifier/issues).
 
 ---
 
