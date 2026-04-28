@@ -1,12 +1,25 @@
 # QuPath Extension: Gated Object Classifier
 
-Apply a saved [QuPath](https://qupath.github.io/) object classifier to a *gated*
-subset of objects rather than to every compatible object in the image.
+Run a saved [QuPath](https://qupath.github.io/) object classifier on a chosen
+subset of objects, instead of every object in the image.
 
-You define the subset by class membership, by measurement value, or from
-the current viewer selection - and any combination of the above. Each
-application is recorded as a copyable workflow step so you can run the
-same operation on a whole project as a script.
+You pick the subset by class, by measurement value, by what you have selected
+in the viewer, or any combination of those. The dialog shows a live count of
+how many objects will be classified before you click Apply.
+
+Common uses:
+
+- **Stack two classifiers.** Run a CD20 classifier first, then run a CD4/CD8
+  classifier only on the cells the first one left unclassified.
+- **Pre-filter a noisy image.** Run a strong-marker classifier only on cells
+  whose intensity is already above a threshold.
+- **Iterate on a small region.** Classify just the objects you have selected
+  in the viewer, without touching the rest of the image.
+
+If you have ever used `Classify > Object classification > Apply classifier`
+and wished it could target a subset, this extension is the GUI for that.
+Every Apply is also recorded as a workflow step, so the same gated operation
+can be re-run across a whole project as a script.
 
 This pattern was originally explored in
 [Sara McArdle's `B_Helper_Cyto.groovy`](https://github.com/saramcardle/Image-Analysis-Scripts/blob/master/QuPath%20Groovy%20Scripts/Workshop%20Examples/B_Helper_Cyto.groovy)
@@ -34,19 +47,26 @@ The extension appears under `Extensions > Gated Object Classifier`.
 <details>
 <summary><b>Why use this?</b></summary>
 
-QuPath's stock "Object classification > Apply classifier" command always runs
-on every compatible object in the image. That makes it awkward to:
+QuPath's stock `Object classification > Apply classifier` always runs on
+every compatible object in the image. There is no built-in GUI for "apply
+this classifier only to cells that are Tumor" or "apply this classifier
+only to cells the previous classifier left unclassified". You can do it in
+Groovy (see Sara McArdle's `B_Helper_Cyto.groovy`), but only if you are
+comfortable writing scripts.
 
-- Stack two classifiers, where the second one should only run on the cells
-  the first one left unclassified.
-- Pre-filter a noisy image - apply a strong-marker classifier only to cells
-  whose intensity already passes a threshold.
-- Quickly iterate on a small ROI by classifying just the objects you have
-  selected in the viewer.
+This extension exposes that pattern as a dialog:
 
-This extension adds a single dialog that lets you define the subset
-declaratively, with a live preview of how many objects are about to be
-classified.
+- Define the subset declaratively -- by class, by measurement, by current
+  selection, or any AND combination.
+- See a live `X of Y objects will be classified` preview before you commit.
+- Click `Show selection` to highlight the gated objects in the viewer.
+- Get a copyable workflow step recorded automatically, so the gated
+  operation runs over a whole project via `Run > Run for project`.
+
+If you already have a Groovy snippet that does exactly this, keep using it
+-- the scripting API (`GatedObjectClassifierScripts.runGatedClassifier`) is
+the same engine the dialog drives, and the recorded workflow steps call
+straight into it.
 
 </details>
 
@@ -250,9 +270,13 @@ require a running QuPath instance.
 <details>
 <summary><b>Contributing</b></summary>
 
-Bug reports and feature requests welcome via
+For general support and feature requests, please post on the
+[image.sc forum](https://forum.image.sc/) with the `#qupath` tag and
+mention `@Mike_Nelson` to flag the topic for my attention.
+
+Bug reports can also be filed via
 [GitHub Issues](https://github.com/uw-loci/qupath-extension-gated-object-classifier/issues).
-Pull requests are also welcome - please open an issue first if you are
+Pull requests are welcome - please open an issue first if you are
 planning a substantial change so we can discuss scope.
 
 To refresh the dialog screenshot:
