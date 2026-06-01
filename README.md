@@ -26,7 +26,7 @@ This pattern was originally explored in
 and discussed in
 [this image.sc forum thread](https://forum.image.sc/t/feature-request-apply-classifiers-to-only-some-selected-objects/86383).
 
-![Gated Object Classifier dialog](docs/screenshot-dialog.png)
+![Gated Object Classifier dialog: a LUCA composite classifier with Object source set to Custom filter, a multi-class Class filter, a measurement filter ("Cell: Autofluorescence max" greater than 11.0), and the live count "337 of 5,353 objects will be classified", shown over a multiplexed immunofluorescence image.](images/gated-object-classifier-dialog.png)
 
 ---
 
