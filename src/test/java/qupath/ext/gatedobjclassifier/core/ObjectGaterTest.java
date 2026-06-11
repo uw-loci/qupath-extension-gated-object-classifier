@@ -98,6 +98,34 @@ class ObjectGaterTest {
     }
 
     @Test
+    void customWithMultipleMeasurementFiltersAreAndCombined() {
+        // area > 20 AND area < 50 -> keeps 30 and 40 (drops 10, 20, 50)
+        var u = universe();
+        var crit = GatingCriteria.builder()
+                .source(ObjectSourceMode.CUSTOM)
+                .measurementFilter(new MeasurementFilter("area", Comparator.GT, 20.0))
+                .measurementFilter(new MeasurementFilter("area", Comparator.LT, 50.0))
+                .build();
+        var gated = ObjectGater.apply(u, Collections.emptyList(), crit);
+        assertThat(gated).hasSize(2);
+        assertThat(gated).allSatisfy(o -> {
+            double a = o.getMeasurementList().get("area");
+            assertThat(a).isGreaterThan(20.0).isLessThan(50.0);
+        });
+    }
+
+    @Test
+    void customWithContradictoryMeasurementFiltersMatchNothing() {
+        var u = universe();
+        var crit = GatingCriteria.builder()
+                .source(ObjectSourceMode.CUSTOM)
+                .measurementFilter(new MeasurementFilter("area", Comparator.GT, 40.0))
+                .measurementFilter(new MeasurementFilter("area", Comparator.LT, 20.0))
+                .build();
+        assertThat(ObjectGater.apply(u, Collections.emptyList(), crit)).isEmpty();
+    }
+
+    @Test
     void customWithUnclassifiedSentinel() {
         var u = universe();
         ClassFilter cf = ClassFilter.of(Set.of(), true);

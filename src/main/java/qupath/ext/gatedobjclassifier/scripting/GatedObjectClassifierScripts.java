@@ -39,9 +39,14 @@ import java.util.Set;
  *       element verbatim - use this form for class names that themselves
  *       contain ":"). The literal {@code "(unclassified)"} matches objects
  *       with no class.</li>
- *   <li>{@code measurement} - measurement name (CUSTOM only).</li>
+ *   <li>{@code measurement} - measurement name for a single threshold
+ *       (CUSTOM only).</li>
  *   <li>{@code op}          - {@link Comparator} name, e.g. {@code "GT"}.</li>
  *   <li>{@code value1}, {@code value2} - numeric thresholds.</li>
+ *   <li>{@code measurements} - a {@code List} of maps for two or more
+ *       thresholds, each map shaped like the flat form above
+ *       ({@code [measurement: "...", op: "GT", value1: 0.2]}). All filters,
+ *       including any flat one, are AND-combined.</li>
  *   <li>{@code preserveClass} - {@code true} to leave existing classes
  *       untouched (maps to {@code resetExistingClass=false}).</li>
  * </ul>
@@ -190,20 +195,28 @@ public final class GatedObjectClassifierScripts {
             }
         }
 
-        Object measurement = opts.get("measurement");
-        if (measurement != null && !measurement.toString().isBlank()) {
-            Object opRaw = opts.get("op");
-            Comparator op = Comparator.GT;
-            if (opRaw != null) {
-                try {
-                    op = Comparator.valueOf(opRaw.toString().trim().toUpperCase());
-                } catch (IllegalArgumentException e) {
-                    logger.warn("Unknown comparator '{}', defaulting to GT", opRaw);
+        // Flat single-filter form: measurement/op/value1/value2 at the top
+        // level. Kept for hand-edited scripts and steps recorded before
+        // multi-threshold support was added.
+        MeasurementFilter flat = parseMeasurementMap(opts);
+        if (flat != null) {
+            b.measurementFilter(flat);
+        }
+
+        // Multi-filter form: a "measurements" list of maps, each shaped like
+        // the flat form. AND-combined with each other and with the flat filter.
+        Object measurementsRaw = opts.get("measurements");
+        if (measurementsRaw instanceof Collection<?> coll) {
+            for (Object entry : coll) {
+                if (entry instanceof Map<?, ?> map) {
+                    MeasurementFilter mf = parseMeasurementMap(map);
+                    if (mf != null) {
+                        b.measurementFilter(mf);
+                    }
+                } else if (entry != null) {
+                    logger.warn("[gated-classifier] Ignoring non-map entry in 'measurements': {}", entry);
                 }
             }
-            double v1 = readDouble(opts.get("value1"), 0.0);
-            double v2 = readDouble(opts.get("value2"), Double.NaN);
-            b.measurementFilter(new MeasurementFilter(measurement.toString(), op, v1, v2));
         }
 
         Object preserve = opts.get("preserveClass");
@@ -242,6 +255,31 @@ public final class GatedObjectClassifierScripts {
             return list;
         }
         return Collections.singletonList(raw);
+    }
+
+    /**
+     * Parse a single measurement filter from a map carrying the keys
+     * {@code measurement}, {@code op}, {@code value1}, and (optionally)
+     * {@code value2}. Returns {@code null} when no usable {@code measurement}
+     * name is present, so an empty or unrelated map is silently skipped.
+     */
+    private static MeasurementFilter parseMeasurementMap(Map<?, ?> map) {
+        Object measurement = map.get("measurement");
+        if (measurement == null || measurement.toString().isBlank()) {
+            return null;
+        }
+        Comparator op = Comparator.GT;
+        Object opRaw = map.get("op");
+        if (opRaw != null) {
+            try {
+                op = Comparator.valueOf(opRaw.toString().trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                logger.warn("Unknown comparator '{}', defaulting to GT", opRaw);
+            }
+        }
+        double v1 = readDouble(map.get("value1"), 0.0);
+        double v2 = readDouble(map.get("value2"), Double.NaN);
+        return new MeasurementFilter(measurement.toString(), op, v1, v2);
     }
 
     private static double readDouble(Object raw, double fallback) {

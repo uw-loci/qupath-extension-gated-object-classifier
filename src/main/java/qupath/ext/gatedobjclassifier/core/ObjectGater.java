@@ -67,18 +67,26 @@ public final class ObjectGater {
                 && criteria.classFilter().isPresent()
                 && !criteria.classFilter().get().isAcceptAll();
         boolean applyMeasurement = criteria.source() == ObjectSourceMode.CUSTOM
-                && criteria.measurementFilter().isPresent();
+                && !criteria.measurementFilters().isEmpty();
 
         if (!applyClass && !applyMeasurement) {
             return new ArrayList<>(base);
         }
 
         ClassFilter cf = applyClass ? criteria.classFilter().orElse(null) : null;
-        MeasurementFilter mf = applyMeasurement ? criteria.measurementFilter().orElse(null) : null;
+        List<MeasurementFilter> mfs = applyMeasurement
+                ? criteria.measurementFilters() : Collections.emptyList();
         List<PathObject> out = new ArrayList<>();
         for (PathObject o : base) {
             if (cf != null && !cf.accepts(o)) continue;
-            if (mf != null && !mf.accepts(o)) continue;
+            boolean passesAll = true;
+            for (MeasurementFilter mf : mfs) {
+                if (!mf.accepts(o)) {
+                    passesAll = false;
+                    break;
+                }
+            }
+            if (!passesAll) continue;
             out.add(o);
         }
         return out;

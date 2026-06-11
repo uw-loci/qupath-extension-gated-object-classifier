@@ -72,6 +72,23 @@ class WorkflowScriptBuilderTest {
     }
 
     @Test
+    void multipleMeasurementsEmitMeasurementsListAndNotFlatKeys() {
+        GatingCriteria crit = GatingCriteria.builder()
+                .source(ObjectSourceMode.CUSTOM)
+                .measurementFilter(new MeasurementFilter("DAB: Cell: Mean", Comparator.GT, 0.2))
+                .measurementFilter(new MeasurementFilter("Cell: Area", Comparator.BETWEEN, 50.0, 200.0))
+                .build();
+        String script = WorkflowScriptBuilder.buildScript("MyClassifier", crit);
+
+        assertThat(script).contains("measurements : [");
+        assertThat(script).contains("[measurement : \"DAB: Cell: Mean\", op : \"GT\", value1 : 0.2]");
+        assertThat(script).contains("[measurement : \"Cell: Area\", op : \"BETWEEN\", value1 : 50.0, value2 : 200.0]");
+        // The flat single-filter "measurement :" key must NOT appear when there
+        // are 2+ filters (the keys inside the list maps are a different prefix).
+        assertThat(script).doesNotContain("        measurement :");
+    }
+
+    @Test
     void preserveClassFlagAppears() {
         GatingCriteria crit = GatingCriteria.builder()
                 .source(ObjectSourceMode.ALL_COMPATIBLE)

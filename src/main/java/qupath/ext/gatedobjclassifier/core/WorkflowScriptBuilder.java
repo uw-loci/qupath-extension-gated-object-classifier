@@ -44,14 +44,22 @@ public final class WorkflowScriptBuilder {
                     appendEntry(sb, false, "classes", classesLiteral(cf));
                 }
             });
-            criteria.measurementFilter().ifPresent(mf -> {
+            List<MeasurementFilter> mfs = criteria.measurementFilters();
+            if (mfs.size() == 1) {
+                // Single filter: emit the flat keys, which keep the common-case
+                // script short and match the hand-edited form in the README.
+                MeasurementFilter mf = mfs.get(0);
                 appendEntry(sb, false, "measurement", quote(mf.measurementName()));
                 appendEntry(sb, false, "op", quote(mf.op().name()));
                 appendEntry(sb, false, "value1", String.valueOf(mf.value1()));
                 if (mf.op().usesSecondValue()) {
                     appendEntry(sb, false, "value2", String.valueOf(mf.value2()));
                 }
-            });
+            } else if (mfs.size() > 1) {
+                // Two or more filters: emit a "measurements" list of maps,
+                // AND-combined at run time by the scripting facade.
+                appendEntry(sb, false, "measurements", measurementsLiteral(mfs));
+            }
         }
 
         if (criteria.preserveExistingClass()) {
@@ -99,6 +107,30 @@ public final class WorkflowScriptBuilder {
             sb.append(quote(ClassFilter.UNCLASSIFIED_LITERAL));
         }
         sb.append(']');
+        return sb.toString();
+    }
+
+    /**
+     * Render the {@code measurements} list literal: a Groovy list of maps, one
+     * per measurement filter, each with {@code measurement}, {@code op},
+     * {@code value1}, and (for "between") {@code value2}. Indented to nest
+     * cleanly inside the outer options map.
+     */
+    private static String measurementsLiteral(List<MeasurementFilter> filters) {
+        StringBuilder sb = new StringBuilder("[\n");
+        boolean first = true;
+        for (MeasurementFilter mf : filters) {
+            if (!first) sb.append(",\n");
+            first = false;
+            sb.append("            [measurement : ").append(quote(mf.measurementName()))
+                    .append(", op : ").append(quote(mf.op().name()))
+                    .append(", value1 : ").append(mf.value1());
+            if (mf.op().usesSecondValue()) {
+                sb.append(", value2 : ").append(mf.value2());
+            }
+            sb.append("]");
+        }
+        sb.append("\n        ]");
         return sb.toString();
     }
 

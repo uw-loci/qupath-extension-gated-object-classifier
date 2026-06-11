@@ -86,11 +86,15 @@ straight into it.
      with the compatible set.
    - **Custom filter** - applies the class and measurement filters below.
 5. (Custom filter only) narrow the set:
-   - **Class filter** - pick one or more classes from the list. Tick
-     `Include unclassified` to also include objects with no class.
-   - **Measurement filter** - pick a measurement, an operator
-     (`<`, `<=`, `>`, `>=`, `==`, `!=`, `between`), and one (or two)
-     threshold values.
+   - **Class filter** - tick the checkbox next to each class you want to
+     include. Tick `Include unclassified` to also include objects with no
+     class.
+   - **Measurement thresholds** - click `Add threshold` to add a row, then
+     pick a measurement, an operator (`<`, `<=`, `>`, `>=`, `==`, `!=`,
+     `between`), and one (or two) threshold values. Add more rows to gate on
+     several measurements at once; the rows are combined with AND, so an
+     object must pass every threshold. Each row has its own `x` button to
+     remove it.
 6. Watch the preview - `X of Y objects will be classified` updates live.
    Click `Show selection` to highlight the gated objects in the viewer.
 7. (Optional) tick `Preserve existing class` to leave already-classified
@@ -157,6 +161,23 @@ GatedObjectClassifierScripts.runGatedClassifier(
 )
 ```
 
+**Multiple thresholds** combined with AND (e.g. DAB mean above 0.2 *and*
+cell area between 50 and 200). Pass a `measurements` list of maps instead of
+the flat `measurement`/`op`/`value1` keys:
+
+```groovy
+GatedObjectClassifierScripts.runGatedClassifier(
+    "T-cell-classifier",
+    [
+        source       : "CUSTOM",
+        measurements : [
+            [measurement: "DAB: Cell: Mean", op: "GT", value1: 0.2],
+            [measurement: "Cell: Area",      op: "BETWEEN", value1: 50, value2: 200]
+        ]
+    ]
+)
+```
+
 **Recreating the `B_Helper_Cyto.groovy` pattern** (apply classifier B only
 to what classifier A left unclassified):
 
@@ -178,10 +199,11 @@ GatedObjectClassifierScripts.runGatedClassifier(
 |----------------|---------------------|-----------------------------------------------------------------------|
 | `source`       | `String`            | `"ALL_COMPATIBLE"`, `"SELECTED_ONLY"`, `"CUSTOM"` (required).         |
 | `classes`      | `List`              | CUSTOM only. Each entry is either a `List<String>` of component names (recommended; reconstructed via `PathClass.fromCollection`, so colons in derived class chains round-trip safely) or a plain `String` (parsed via `PathClass.fromString`). Use `"(unclassified)"` for null-class. |
-| `measurement`  | `String`            | CUSTOM only. Measurement name as it appears in the measurement table. |
+| `measurement`  | `String`            | CUSTOM only. Measurement name for a single threshold, as it appears in the measurement table. |
 | `op`           | `String`            | One of `LT, LE, GT, GE, EQ, NE, BETWEEN`.                             |
 | `value1`       | `Number`            | Primary threshold.                                                    |
 | `value2`       | `Number`            | Required only when `op == "BETWEEN"`.                                 |
+| `measurements` | `List`              | CUSTOM only. Two or more thresholds, each a `Map` with `measurement`, `op`, `value1`, and (for `BETWEEN`) `value2`. All thresholds - including any flat single one - are AND-combined. |
 | `preserveClass`| `Boolean`           | `true` skips overwriting objects that already have a class.           |
 
 Unknown keys are ignored. Missing required keys default to a no-op
@@ -240,8 +262,8 @@ A few things worth knowing once you start using the extension day-to-day:
   hand from a Groovy script with `loadObjectClassifier("/full/path.json")`.
 - **Single classifier per run.** Running several classifiers sequentially
   (composite classifier) requires multiple workflow steps, one per call.
-- **AND-only logic between filters.** Class filter and measurement filter
-  are combined with AND. There is no OR or NOT.
+- **AND-only logic between filters.** The class filter and every measurement
+  threshold are combined with AND. There is no OR or NOT.
 - **Last-used filters are not persisted** between sessions.
 
 These are tracked for follow-up; please file a GitHub issue if you need any

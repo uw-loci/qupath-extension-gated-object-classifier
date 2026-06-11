@@ -1,9 +1,9 @@
 package qupath.ext.gatedobjclassifier.ui;
 
 import javafx.application.Platform;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
-import javafx.geometry.HPos;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -15,7 +15,6 @@ import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.ScrollPane;
-import javafx.scene.control.SelectionMode;
 import javafx.scene.control.Separator;
 import javafx.scene.control.TextField;
 import javafx.scene.control.TextFormatter;
@@ -23,8 +22,8 @@ import javafx.scene.control.TitledPane;
 import javafx.scene.control.Toggle;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.Tooltip;
+import javafx.scene.control.cell.CheckBoxListCell;
 import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -113,14 +112,19 @@ public final class GatedClassifierDialog {
 
     // --- Filter section
     private final TitledPane filtersPane = new TitledPane();
-    private final ListView<PathClass> classListView = new ListView<>();
+    // Class filter: a checkbox list so the user can tick classes directly
+    // instead of ctrl-clicking a multi-select list.
+    private final ListView<ClassEntry> classListView = new ListView<>();
     private final CheckBox includeUnclassifiedCheck = new CheckBox(resources.getString("label.filter.class.includeUnclassified"));
-    private final CheckBox enableMeasurementCheck = new CheckBox(resources.getString("label.filter.measurement.enable"));
-    private final ComboBox<String> measurementCombo = new ComboBox<>();
-    private final ComboBox<Comparator> comparatorCombo = new ComboBox<>(FXCollections.observableArrayList(Comparator.values()));
-    private final TextField value1Field = new TextField();
-    private final TextField value2Field = new TextField();
-    private final Label value2Label = new Label(resources.getString("label.filter.measurement.value2"));
+    // Classes whose checkbox is ticked. Tracked separately from the ListView
+    // items so the ticks survive a repopulation (classifier / hierarchy change).
+    private final Set<PathClass> checkedClasses = new LinkedHashSet<>();
+    // Measurement thresholds: a dynamic list of rows, AND-combined. "Add
+    // threshold" appends a row; each row carries its own remove button.
+    private final VBox measurementRowsBox = new VBox(6);
+    private final Label measurementEmptyLabel = new Label(resources.getString("label.filter.measurement.empty"));
+    private final Button addThresholdButton = new Button(resources.getString("label.filter.measurement.add"));
+    private final List<MeasurementRow> measurementRows = new ArrayList<>();
 
     // --- Options
     private final CheckBox preserveClassCheck = new CheckBox(resources.getString("label.options.preserveClass"));
@@ -320,11 +324,12 @@ public final class GatedClassifierDialog {
         VBox box = new VBox(10);
         box.setPadding(new Insets(8));
 
-        // Class filter
+        // Class filter -- a checkbox list. Each row's checkbox is driven by the
+        // ClassEntry's BooleanProperty; CheckBoxListCell wires the two together.
         VBox classBox = new VBox(6);
         Label classTitle = new Label(resources.getString("label.filter.class.title"));
         classTitle.setStyle("-fx-font-weight: bold;");
-        classListView.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        classListView.setCellFactory(CheckBoxListCell.forListView(ClassEntry::selectedProperty));
         classListView.setPrefHeight(160);
         classListView.setMinHeight(120);
         classListView.setPlaceholder(new Label(resources.getString("label.filter.class.placeholder")));
@@ -332,55 +337,23 @@ public final class GatedClassifierDialog {
         VBox.setVgrow(classListView, Priority.ALWAYS);
         includeUnclassifiedCheck.setTooltip(new Tooltip(resources.getString("tooltip.classFilter.unclassified")));
         Button classClear = new Button(resources.getString("label.filter.class.clear"));
-        classClear.setOnAction(e -> classListView.getSelectionModel().clearSelection());
+        classClear.setOnAction(e -> clearCheckedClasses());
         HBox classButtons = new HBox(8, includeUnclassifiedCheck, classClear);
         classButtons.setAlignment(Pos.CENTER_LEFT);
         classBox.getChildren().addAll(classTitle, classListView, classButtons);
 
-        // Measurement filter
+        // Measurement filter -- one or more threshold rows, AND-combined.
         VBox measBox = new VBox(6);
         Label measTitle = new Label(resources.getString("label.filter.measurement.title"));
         measTitle.setStyle("-fx-font-weight: bold;");
-        measurementCombo.setMaxWidth(Double.MAX_VALUE);
-        measurementCombo.setPlaceholder(new Label(resources.getString("label.filter.measurement.placeholder")));
-        comparatorCombo.setConverter(new StringConverter<Comparator>() {
-            @Override public String toString(Comparator c) {
-                if (c == null) return "";
-                return c.symbol() + "  (" + c.label() + ")";
-            }
-            @Override public Comparator fromString(String s) { return null; }
+        measurementEmptyLabel.setStyle("-fx-font-style: italic; -fx-opacity: 0.7;");
+        addThresholdButton.setTooltip(new Tooltip(resources.getString("tooltip.measurement.add")));
+        addThresholdButton.setOnAction(e -> {
+            addMeasurementRow();
+            recomputePreview();
         });
-        comparatorCombo.getSelectionModel().select(Comparator.GT);
-        configureNumericField(value1Field);
-        configureNumericField(value2Field);
-
-        enableMeasurementCheck.setTooltip(new Tooltip(resources.getString("tooltip.measurement.enable")));
-        measurementCombo.setTooltip(new Tooltip(resources.getString("tooltip.measurement.combo")));
-        comparatorCombo.setTooltip(new Tooltip(resources.getString("tooltip.measurement.op")));
-        value1Field.setTooltip(new Tooltip(resources.getString("tooltip.measurement.value")));
-        value2Field.setTooltip(new Tooltip(resources.getString("tooltip.measurement.value2")));
-
-        GridPane grid = new GridPane();
-        grid.setHgap(8);
-        grid.setVgap(6);
-        Label measComboLabel = new Label(resources.getString("label.filter.measurement.combo"));
-        measComboLabel.setTooltip(new Tooltip(resources.getString("tooltip.measurement.combo")));
-        grid.add(measComboLabel, 0, 0);
-        grid.add(measurementCombo, 1, 0, 3, 1);
-        GridPane.setHgrow(measurementCombo, Priority.ALWAYS);
-        Label measOpLabel = new Label(resources.getString("label.filter.measurement.op"));
-        measOpLabel.setTooltip(new Tooltip(resources.getString("tooltip.measurement.op")));
-        grid.add(measOpLabel, 0, 1);
-        grid.add(comparatorCombo, 1, 1);
-        Label measValueLabel = new Label(resources.getString("label.filter.measurement.value"));
-        measValueLabel.setTooltip(new Tooltip(resources.getString("tooltip.measurement.value")));
-        grid.add(measValueLabel, 2, 1);
-        grid.add(value1Field, 3, 1);
-        grid.add(value2Label, 2, 2);
-        grid.add(value2Field, 3, 2);
-        GridPane.setHalignment(value2Label, HPos.RIGHT);
-
-        measBox.getChildren().addAll(measTitle, enableMeasurementCheck, grid);
+        refreshMeasurementEmptyState();
+        measBox.getChildren().addAll(measTitle, measurementRowsBox, addThresholdButton);
 
         box.getChildren().addAll(classBox, new Separator(), measBox);
 
@@ -459,34 +432,9 @@ public final class GatedClassifierDialog {
         });
         filtersPane.setDisable(true);
 
-        // Measurement filter row enable/disable
-        measurementCombo.disableProperty().bind(enableMeasurementCheck.selectedProperty().not());
-        comparatorCombo.disableProperty().bind(enableMeasurementCheck.selectedProperty().not());
-        value1Field.disableProperty().bind(enableMeasurementCheck.selectedProperty().not());
-
-        comparatorCombo.valueProperty().addListener((obs, oldV, newV) -> {
-            boolean usesTwo = newV != null && newV.usesSecondValue();
-            value2Field.setVisible(usesTwo);
-            value2Field.setManaged(usesTwo);
-            value2Label.setVisible(usesTwo);
-            value2Label.setManaged(usesTwo);
-            recomputePreview();
-        });
-        // Initialize visibility for default GT
-        Comparator initial = comparatorCombo.getValue();
-        boolean usesTwoInitial = initial != null && initial.usesSecondValue();
-        value2Field.setVisible(usesTwoInitial);
-        value2Field.setManaged(usesTwoInitial);
-        value2Label.setVisible(usesTwoInitial);
-        value2Label.setManaged(usesTwoInitial);
-
-        enableMeasurementCheck.selectedProperty().addListener((obs, oldV, newV) -> recomputePreview());
-        measurementCombo.valueProperty().addListener((obs, oldV, newV) -> recomputePreview());
-        value1Field.textProperty().addListener((obs, oldV, newV) -> recomputePreview());
-        value2Field.textProperty().addListener((obs, oldV, newV) -> recomputePreview());
+        // Measurement rows recompute the preview as they are edited; the
+        // per-row change listeners are wired in addMeasurementRow().
         includeUnclassifiedCheck.selectedProperty().addListener((obs, oldV, newV) -> recomputePreview());
-        classListView.getSelectionModel().getSelectedItems().addListener(
-                (javafx.collections.ListChangeListener<PathClass>) change -> recomputePreview());
 
         // Hierarchy selection -> source counts and preview. Hold a reference
         // so we can detach on close - otherwise the listener leaks and keeps
@@ -700,16 +648,29 @@ public final class GatedClassifierDialog {
     }
 
     private void populateFilterChoices() {
-        ObservableList<PathClass> classItems = FXCollections.observableArrayList(universeClassesCache);
-        classListView.setItems(classItems);
+        // Drop ticks for classes that are no longer present, then rebuild the
+        // checkbox entries, restoring ticks from the surviving checked set.
+        checkedClasses.retainAll(universeClassesCache);
+        List<ClassEntry> entries = new ArrayList<>(universeClassesCache.size());
+        for (PathClass pc : universeClassesCache) {
+            ClassEntry entry = new ClassEntry(pc);
+            entry.selectedProperty().set(checkedClasses.contains(pc));
+            entry.selectedProperty().addListener((obs, was, now) -> {
+                if (Boolean.TRUE.equals(now)) {
+                    checkedClasses.add(pc);
+                } else {
+                    checkedClasses.remove(pc);
+                }
+                recomputePreview();
+            });
+            entries.add(entry);
+        }
+        classListView.setItems(FXCollections.observableArrayList(entries));
 
-        ObservableList<String> measItems = FXCollections.observableArrayList(universeMeasurementsCache);
-        String previousValue = measurementCombo.getValue();
-        measurementCombo.setItems(measItems);
-        if (previousValue != null && measItems.contains(previousValue)) {
-            measurementCombo.setValue(previousValue);
-        } else if (!measItems.isEmpty()) {
-            measurementCombo.setValue(null);
+        // Refresh the measurement-name choices in every existing threshold row,
+        // preserving each row's current selection.
+        for (MeasurementRow row : measurementRows) {
+            row.setMeasurements(universeMeasurementsCache);
         }
     }
 
@@ -859,8 +820,7 @@ public final class GatedClassifierDialog {
             if (cf != null && !cf.isAcceptAll()) {
                 b.classFilter(cf);
             }
-            MeasurementFilter mf = buildMeasurementFilter();
-            if (mf != null) {
+            for (MeasurementFilter mf : buildMeasurementFilters()) {
                 b.measurementFilter(mf);
             }
         }
@@ -874,7 +834,7 @@ public final class GatedClassifierDialog {
     }
 
     private ClassFilter buildClassFilter() {
-        Set<PathClass> selected = new LinkedHashSet<>(classListView.getSelectionModel().getSelectedItems());
+        Set<PathClass> selected = new LinkedHashSet<>(checkedClasses);
         boolean includeUnclassified = includeUnclassifiedCheck.isSelected();
         if (selected.isEmpty() && !includeUnclassified) {
             return null;
@@ -882,27 +842,21 @@ public final class GatedClassifierDialog {
         return ClassFilter.of(selected, includeUnclassified);
     }
 
-    private MeasurementFilter buildMeasurementFilter() {
-        if (!enableMeasurementCheck.isSelected()) {
-            return null;
+    /**
+     * Collect the valid measurement filters from the threshold rows. Rows that
+     * are incomplete (no measurement chosen, no value typed, or a "between" row
+     * missing its upper bound) are skipped so the preview stays live while the
+     * user is still filling a row in.
+     */
+    private List<MeasurementFilter> buildMeasurementFilters() {
+        List<MeasurementFilter> filters = new ArrayList<>(measurementRows.size());
+        for (MeasurementRow row : measurementRows) {
+            MeasurementFilter mf = row.toFilter();
+            if (mf != null) {
+                filters.add(mf);
+            }
         }
-        String name = measurementCombo.getValue();
-        if (name == null || name.isBlank()) {
-            return null;
-        }
-        Comparator op = comparatorCombo.getValue();
-        if (op == null) {
-            return null;
-        }
-        Double v1 = parseField(value1Field);
-        if (v1 == null) {
-            return null;
-        }
-        Double v2 = op.usesSecondValue() ? parseField(value2Field) : null;
-        if (op.usesSecondValue() && v2 == null) {
-            return null;
-        }
-        return new MeasurementFilter(name, op, v1, v2 == null ? Double.NaN : v2);
+        return filters;
     }
 
     private static Double parseField(TextField field) {
@@ -912,6 +866,162 @@ public final class GatedClassifierDialog {
             return Double.parseDouble(text.trim());
         } catch (NumberFormatException e) {
             return null;
+        }
+    }
+
+    // -----------------------------------------------------------------------------
+    // Class checkbox + measurement row management
+    // -----------------------------------------------------------------------------
+
+    private void clearCheckedClasses() {
+        for (ClassEntry entry : classListView.getItems()) {
+            entry.selectedProperty().set(false);
+        }
+        checkedClasses.clear();
+        recomputePreview();
+    }
+
+    /** Append an empty threshold row defaulting to "greater than". */
+    private void addMeasurementRow() {
+        MeasurementRow row = new MeasurementRow();
+        row.setMeasurements(universeMeasurementsCache);
+        measurementRows.add(row);
+        measurementRowsBox.getChildren().add(row.container);
+        refreshMeasurementEmptyState();
+    }
+
+    private void removeMeasurementRow(MeasurementRow row) {
+        if (measurementRows.remove(row)) {
+            measurementRowsBox.getChildren().remove(row.container);
+            refreshMeasurementEmptyState();
+            recomputePreview();
+        }
+    }
+
+    private void refreshMeasurementEmptyState() {
+        // Show the "no thresholds" placeholder only when no rows exist; never
+        // let it occupy a row slot alongside real rows.
+        measurementRowsBox.getChildren().remove(measurementEmptyLabel);
+        if (measurementRows.isEmpty()) {
+            measurementRowsBox.getChildren().add(0, measurementEmptyLabel);
+        }
+    }
+
+    /**
+     * Wrapper around a {@link PathClass} carrying a {@code selected} property so
+     * a {@link CheckBoxListCell} can render and toggle its checkbox. Equality is
+     * by wrapped class so a checked entry survives list repopulation.
+     */
+    private static final class ClassEntry {
+        private final PathClass pathClass;
+        private final BooleanProperty selected = new SimpleBooleanProperty(false);
+
+        ClassEntry(PathClass pathClass) {
+            this.pathClass = pathClass;
+        }
+
+        BooleanProperty selectedProperty() {
+            return selected;
+        }
+
+        @Override
+        public String toString() {
+            return pathClass == null ? ClassFilter.UNCLASSIFIED_LITERAL : pathClass.toString();
+        }
+    }
+
+    /**
+     * A single measurement-threshold row: measurement combo, comparator,
+     * value-1 / value-2 fields (value-2 shown only for "between"), and a remove
+     * button. Lives in {@link #measurementRows}; any edit recomputes the preview.
+     */
+    private final class MeasurementRow {
+        final ComboBox<String> measurementCombo = new ComboBox<>();
+        final ComboBox<Comparator> comparatorCombo =
+                new ComboBox<>(FXCollections.observableArrayList(Comparator.values()));
+        final TextField value1Field = new TextField();
+        final TextField value2Field = new TextField();
+        final Label andLabel = new Label(resources.getString("label.filter.measurement.and"));
+        final Button removeButton = new Button(resources.getString("label.filter.measurement.removeRow"));
+        final HBox container;
+
+        MeasurementRow() {
+            measurementCombo.setMaxWidth(Double.MAX_VALUE);
+            measurementCombo.setPlaceholder(new Label(resources.getString("label.filter.measurement.placeholder")));
+            measurementCombo.setTooltip(new Tooltip(resources.getString("tooltip.measurement.combo")));
+
+            comparatorCombo.setConverter(new StringConverter<Comparator>() {
+                @Override public String toString(Comparator c) {
+                    if (c == null) return "";
+                    return c.symbol() + "  (" + c.label() + ")";
+                }
+                @Override public Comparator fromString(String s) { return null; }
+            });
+            comparatorCombo.getSelectionModel().select(Comparator.GT);
+            comparatorCombo.setTooltip(new Tooltip(resources.getString("tooltip.measurement.op")));
+
+            configureNumericField(value1Field);
+            configureNumericField(value2Field);
+            value1Field.setTooltip(new Tooltip(resources.getString("tooltip.measurement.value")));
+            value2Field.setTooltip(new Tooltip(resources.getString("tooltip.measurement.value2")));
+
+            removeButton.setTooltip(new Tooltip(resources.getString("tooltip.measurement.removeRow")));
+            removeButton.setAccessibleText(resources.getString("tooltip.measurement.removeRow"));
+            removeButton.setOnAction(e -> removeMeasurementRow(this));
+
+            Label isLabel = new Label(resources.getString("label.filter.measurement.is"));
+            container = new HBox(6, measurementCombo, isLabel, comparatorCombo,
+                    value1Field, andLabel, value2Field, removeButton);
+            container.setAlignment(Pos.CENTER_LEFT);
+            HBox.setHgrow(measurementCombo, Priority.ALWAYS);
+
+            comparatorCombo.valueProperty().addListener((obs, oldV, newV) -> {
+                updateValue2Visibility();
+                recomputePreview();
+            });
+            measurementCombo.valueProperty().addListener((obs, oldV, newV) -> recomputePreview());
+            value1Field.textProperty().addListener((obs, oldV, newV) -> recomputePreview());
+            value2Field.textProperty().addListener((obs, oldV, newV) -> recomputePreview());
+
+            updateValue2Visibility();
+        }
+
+        void setMeasurements(List<String> measurements) {
+            String prior = measurementCombo.getValue();
+            measurementCombo.setItems(FXCollections.observableArrayList(measurements));
+            if (prior != null && measurements.contains(prior)) {
+                measurementCombo.setValue(prior);
+            }
+        }
+
+        private void updateValue2Visibility() {
+            Comparator op = comparatorCombo.getValue();
+            boolean usesTwo = op != null && op.usesSecondValue();
+            value2Field.setVisible(usesTwo);
+            value2Field.setManaged(usesTwo);
+            andLabel.setVisible(usesTwo);
+            andLabel.setManaged(usesTwo);
+        }
+
+        /** Build a filter from this row, or {@code null} if the row is incomplete. */
+        MeasurementFilter toFilter() {
+            String name = measurementCombo.getValue();
+            if (name == null || name.isBlank()) {
+                return null;
+            }
+            Comparator op = comparatorCombo.getValue();
+            if (op == null) {
+                return null;
+            }
+            Double v1 = parseField(value1Field);
+            if (v1 == null) {
+                return null;
+            }
+            Double v2 = op.usesSecondValue() ? parseField(value2Field) : null;
+            if (op.usesSecondValue() && v2 == null) {
+                return null;
+            }
+            return new MeasurementFilter(name, op, v1, v2 == null ? Double.NaN : v2);
         }
     }
 
