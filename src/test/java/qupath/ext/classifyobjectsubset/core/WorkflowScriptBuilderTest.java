@@ -1,4 +1,4 @@
-package qupath.ext.gatedobjclassifier.core;
+package qupath.ext.classifyobjectsubset.core;
 
 import org.junit.jupiter.api.Test;
 import qupath.lib.objects.classes.PathClass;
@@ -12,12 +12,12 @@ class WorkflowScriptBuilderTest {
 
     @Test
     void allCompatibleScriptIsMinimal() {
-        GatingCriteria crit = GatingCriteria.builder()
+        SubsetCriteria crit = SubsetCriteria.builder()
                 .source(ObjectSourceMode.ALL_COMPATIBLE)
                 .build();
         String script = WorkflowScriptBuilder.buildScript("MyClassifier", crit);
         assertThat(script)
-                .contains("import qupath.ext.gatedobjclassifier.scripting.GatedObjectClassifierScripts")
+                .contains("import qupath.ext.classifyobjectsubset.scripting.ClassifySubsetScripts")
                 .contains("\"MyClassifier\"")
                 .contains("source : \"ALL_COMPATIBLE\"")
                 .doesNotContain("classes")
@@ -27,7 +27,7 @@ class WorkflowScriptBuilderTest {
 
     @Test
     void selectedOnlyScript() {
-        GatingCriteria crit = GatingCriteria.builder()
+        SubsetCriteria crit = SubsetCriteria.builder()
                 .source(ObjectSourceMode.SELECTED_ONLY)
                 .build();
         String script = WorkflowScriptBuilder.buildScript("MyClassifier", crit);
@@ -41,7 +41,7 @@ class WorkflowScriptBuilderTest {
         classes.add(PathClass.fromString("Stroma"));
         ClassFilter cf = ClassFilter.of(classes, true);
         MeasurementFilter mf = new MeasurementFilter("DAB: Cell: Mean", Comparator.LT, 0.25);
-        GatingCriteria crit = GatingCriteria.builder()
+        SubsetCriteria crit = SubsetCriteria.builder()
                 .source(ObjectSourceMode.CUSTOM)
                 .classFilter(cf)
                 .measurementFilter(mf)
@@ -61,7 +61,7 @@ class WorkflowScriptBuilderTest {
     @Test
     void betweenIncludesValue2() {
         MeasurementFilter mf = new MeasurementFilter("x", Comparator.BETWEEN, 5.0, 10.0);
-        GatingCriteria crit = GatingCriteria.builder()
+        SubsetCriteria crit = SubsetCriteria.builder()
                 .source(ObjectSourceMode.CUSTOM)
                 .measurementFilter(mf)
                 .build();
@@ -73,7 +73,7 @@ class WorkflowScriptBuilderTest {
 
     @Test
     void multipleMeasurementsEmitMeasurementsListAndNotFlatKeys() {
-        GatingCriteria crit = GatingCriteria.builder()
+        SubsetCriteria crit = SubsetCriteria.builder()
                 .source(ObjectSourceMode.CUSTOM)
                 .measurementFilter(new MeasurementFilter("DAB: Cell: Mean", Comparator.GT, 0.2))
                 .measurementFilter(new MeasurementFilter("Cell: Area", Comparator.BETWEEN, 50.0, 200.0))
@@ -90,7 +90,7 @@ class WorkflowScriptBuilderTest {
 
     @Test
     void preserveClassFlagAppears() {
-        GatingCriteria crit = GatingCriteria.builder()
+        SubsetCriteria crit = SubsetCriteria.builder()
                 .source(ObjectSourceMode.ALL_COMPATIBLE)
                 .preserveExistingClass(true)
                 .build();
@@ -100,7 +100,7 @@ class WorkflowScriptBuilderTest {
 
     @Test
     void escapesQuotesAndBackslashesInClassifierName() {
-        GatingCriteria crit = GatingCriteria.builder()
+        SubsetCriteria crit = SubsetCriteria.builder()
                 .source(ObjectSourceMode.ALL_COMPATIBLE)
                 .build();
         String script = WorkflowScriptBuilder.buildScript("name with \" quote and \\ backslash", crit);
@@ -114,9 +114,9 @@ class WorkflowScriptBuilderTest {
 
     @Test
     void scriptStartsWithImportAndEndsWithCloseParen() {
-        GatingCriteria crit = GatingCriteria.builder().source(ObjectSourceMode.ALL_COMPATIBLE).build();
+        SubsetCriteria crit = SubsetCriteria.builder().source(ObjectSourceMode.ALL_COMPATIBLE).build();
         String script = WorkflowScriptBuilder.buildScript("c", crit);
-        assertThat(script).startsWith("import qupath.ext.gatedobjclassifier.scripting.GatedObjectClassifierScripts");
+        assertThat(script).startsWith("import qupath.ext.classifyobjectsubset.scripting.ClassifySubsetScripts");
         assertThat(script.trim()).endsWith(")");
     }
 
@@ -126,7 +126,7 @@ class WorkflowScriptBuilderTest {
         Set<PathClass> classes = new LinkedHashSet<>();
         classes.add(derived);
         ClassFilter cf = ClassFilter.of(classes, false);
-        GatingCriteria crit = GatingCriteria.builder()
+        SubsetCriteria crit = SubsetCriteria.builder()
                 .source(ObjectSourceMode.CUSTOM)
                 .classFilter(cf)
                 .build();
@@ -138,9 +138,9 @@ class WorkflowScriptBuilderTest {
     void roundTripParseFromGroovyOptionsMatchesOriginal() {
         // Just sanity-check that the keys/values our builder emits are the same
         // ones the scripting facade understands. Real round-trip is exercised by
-        // GatedObjectClassifierScripts.parseCriteria which is tested separately
+        // ClassifySubsetScripts.parseCriteria which is tested separately
         // when QuPath context is available.
-        GatingCriteria crit = GatingCriteria.builder()
+        SubsetCriteria crit = SubsetCriteria.builder()
                 .source(ObjectSourceMode.CUSTOM)
                 .measurementFilter(new MeasurementFilter("x", Comparator.GT, 1.5))
                 .preserveExistingClass(true)

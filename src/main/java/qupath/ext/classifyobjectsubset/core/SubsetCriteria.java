@@ -1,4 +1,4 @@
-package qupath.ext.gatedobjclassifier.core;
+package qupath.ext.classifyobjectsubset.core;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,14 +18,14 @@ import java.util.Optional;
  * once (e.g. "DAB mean &gt; 0.2 AND cell area &lt; 200"); an object must pass
  * every filter to be included.</p>
  */
-public final class GatingCriteria {
+public final class SubsetCriteria {
 
     private final ObjectSourceMode source;
     private final ClassFilter classFilter;
     private final List<MeasurementFilter> measurementFilters;
     private final boolean preserveExistingClass;
 
-    private GatingCriteria(Builder b) {
+    private SubsetCriteria(Builder b) {
         this.source = Objects.requireNonNull(b.source, "source");
         this.classFilter = b.classFilter;
         this.measurementFilters = List.copyOf(b.measurementFilters);
@@ -42,7 +42,7 @@ public final class GatingCriteria {
 
     /**
      * The measurement filters to AND-combine, in the order they were added.
-     * Empty when no measurement gating is requested.
+     * Empty when no measurement filtering is requested.
      */
     public List<MeasurementFilter> measurementFilters() {
         return measurementFilters;
@@ -98,16 +98,16 @@ public final class GatingCriteria {
             return this;
         }
 
-        public GatingCriteria build() {
-            return new GatingCriteria(this);
+        public SubsetCriteria build() {
+            return new SubsetCriteria(this);
         }
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof GatingCriteria)) return false;
-        GatingCriteria other = (GatingCriteria) o;
+        if (!(o instanceof SubsetCriteria)) return false;
+        SubsetCriteria other = (SubsetCriteria) o;
         return preserveExistingClass == other.preserveExistingClass
                 && source == other.source
                 && Objects.equals(classFilter, other.classFilter)
@@ -121,7 +121,7 @@ public final class GatingCriteria {
 
     @Override
     public String toString() {
-        return "GatingCriteria[source=" + source
+        return "SubsetCriteria[source=" + source
                 + ", classFilter=" + classFilter
                 + ", measurementFilters=" + measurementFilters
                 + ", preserveExistingClass=" + preserveExistingClass + "]";

@@ -1,4 +1,4 @@
-package qupath.ext.gatedobjclassifier.core;
+package qupath.ext.classifyobjectsubset.core;
 
 /**
  * The strategy used to choose which objects the classifier will be applied to.

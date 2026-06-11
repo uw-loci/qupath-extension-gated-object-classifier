@@ -1,4 +1,4 @@
-package qupath.ext.gatedobjclassifier.core;
+package qupath.ext.classifyobjectsubset.core;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,4 +1,4 @@
-package qupath.ext.gatedobjclassifier.core;
+package qupath.ext.classifyobjectsubset.core;
 
 import qupath.lib.objects.PathObject;
 
@@ -11,17 +11,17 @@ import java.util.Set;
 
 /**
  * Pure subset logic that turns a candidate {@code universe} of objects into the
- * gated set the classifier should be applied to.
+ * selected set the classifier should be applied to.
  *
  * <p>Stateless and free of QuPath GUI / JavaFX dependencies so it can be unit
  * tested without a running QuPath instance.</p>
  */
-public final class ObjectGater {
+public final class ObjectSubsetSelector {
 
-    private ObjectGater() {}
+    private ObjectSubsetSelector() {}
 
     /**
-     * Apply the {@link GatingCriteria} to a {@code universe} of candidate
+     * Apply the {@link SubsetCriteria} to a {@code universe} of candidate
      * objects (typically the result of
      * {@code classifier.getCompatibleObjects(imageData)}).
      *
@@ -32,12 +32,12 @@ public final class ObjectGater {
      * @param universe all classifier-compatible objects in the image
      * @param selected currently selected objects in the hierarchy (may be
      *                 {@code null} or empty)
-     * @param criteria the gating criteria
-     * @return the gated subset, in the same iteration order as {@code universe}
+     * @param criteria the subset criteria
+     * @return the object subset, in the same iteration order as {@code universe}
      */
     public static List<PathObject> apply(Collection<? extends PathObject> universe,
                                          Collection<? extends PathObject> selected,
-                                         GatingCriteria criteria) {
+                                         SubsetCriteria criteria) {
         if (universe == null || universe.isEmpty()) {
             return Collections.emptyList();
         }
@@ -98,7 +98,7 @@ public final class ObjectGater {
      */
     public static List<PathObject> apply(Set<? extends PathObject> universe,
                                          Set<? extends PathObject> selected,
-                                         GatingCriteria criteria) {
+                                         SubsetCriteria criteria) {
         return apply((Collection<? extends PathObject>) universe,
                 (Collection<? extends PathObject>) selected,
                 criteria);

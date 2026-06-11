@@ -1,13 +1,13 @@
-package qupath.ext.gatedobjclassifier.scripting;
+package qupath.ext.classifyobjectsubset.scripting;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import qupath.ext.gatedobjclassifier.core.ClassFilter;
-import qupath.ext.gatedobjclassifier.core.Comparator;
-import qupath.ext.gatedobjclassifier.core.GatedClassificationRunner;
-import qupath.ext.gatedobjclassifier.core.GatingCriteria;
-import qupath.ext.gatedobjclassifier.core.MeasurementFilter;
-import qupath.ext.gatedobjclassifier.core.ObjectSourceMode;
+import qupath.ext.classifyobjectsubset.core.ClassFilter;
+import qupath.ext.classifyobjectsubset.core.Comparator;
+import qupath.ext.classifyobjectsubset.core.SubsetClassificationRunner;
+import qupath.ext.classifyobjectsubset.core.SubsetCriteria;
+import qupath.ext.classifyobjectsubset.core.MeasurementFilter;
+import qupath.ext.classifyobjectsubset.core.ObjectSourceMode;
 import qupath.lib.classifiers.object.ObjectClassifier;
 import qupath.lib.images.ImageData;
 import qupath.lib.objects.PathObject;
@@ -51,23 +51,23 @@ import java.util.Set;
  *       untouched (maps to {@code resetExistingClass=false}).</li>
  * </ul>
  */
-public final class GatedObjectClassifierScripts {
+public final class ClassifySubsetScripts {
 
-    private static final Logger logger = LoggerFactory.getLogger(GatedObjectClassifierScripts.class);
+    private static final Logger logger = LoggerFactory.getLogger(ClassifySubsetScripts.class);
 
-    private GatedObjectClassifierScripts() {}
+    private ClassifySubsetScripts() {}
 
     /**
-     * Apply the named project classifier to a gated subset of the current
+     * Apply the named project classifier to a chosen subset of the current
      * image's objects. Designed to be called from a recorded workflow step.
      *
      * @return the number of objects whose classification changed
      */
-    public static int runGatedClassifier(String classifierName, Map<String, ?> opts) {
+    public static int runClassifySubset(String classifierName, Map<String, ?> opts) {
         ImageData<BufferedImage> imageData = QP.getCurrentImageData();
         String imageLabel = describeImage(imageData);
         if (imageData == null) {
-            logger.warn("[gated-classifier] No current image - skipping '{}'", classifierName);
+            logger.warn("[classify-subset] No current image - skipping '{}'", classifierName);
             return 0;
         }
 
@@ -75,12 +75,12 @@ public final class GatedObjectClassifierScripts {
         try {
             classifier = QP.loadObjectClassifier(classifierName);
         } catch (IllegalArgumentException e) {
-            logger.error("[gated-classifier] [{}] Unable to load classifier '{}': {}",
+            logger.error("[classify-subset] [{}] Unable to load classifier '{}': {}",
                     imageLabel, classifierName, e.getMessage());
             return 0;
         }
 
-        GatingCriteria criteria = parseCriteria(opts);
+        SubsetCriteria criteria = parseCriteria(opts);
 
         Collection<PathObject> selected = imageData.getHierarchy() != null
                 ? imageData.getHierarchy().getSelectionModel().getSelectedObjects()
@@ -89,25 +89,25 @@ public final class GatedObjectClassifierScripts {
         // Batch runs with SELECTED_ONLY are almost always a mistake - call it
         // out clearly so the user can spot it in the project log.
         if (criteria.source() == ObjectSourceMode.SELECTED_ONLY && (selected == null || selected.isEmpty())) {
-            logger.warn("[gated-classifier] [{}] source=SELECTED_ONLY but no objects are selected - "
+            logger.warn("[classify-subset] [{}] source=SELECTED_ONLY but no objects are selected - "
                     + "this is expected during batch (Run for project) and the step is a no-op",
                     imageLabel);
             return 0;
         }
 
-        GatedClassificationRunner.Result result = GatedClassificationRunner.run(
+        SubsetClassificationRunner.Result result = SubsetClassificationRunner.run(
                 imageData, classifier, classifierName, selected, criteria, false);
 
         if (!result.ranSuccessfully()) {
-            logger.warn("[gated-classifier] [{}] '{}' classified 0 objects: {}",
+            logger.warn("[classify-subset] [{}] '{}' classified 0 objects: {}",
                     imageLabel, classifierName,
-                    result.warning == null ? "gated subset was empty" : result.warning);
+                    result.warning == null ? "object subset was empty" : result.warning);
         } else if (result.warning != null) {
-            logger.warn("[gated-classifier] [{}] '{}' classified {} objects, {} changed - {}",
-                    imageLabel, classifierName, result.nGated, result.nChanged, result.warning);
+            logger.warn("[classify-subset] [{}] '{}' classified {} objects, {} changed - {}",
+                    imageLabel, classifierName, result.nSelected, result.nChanged, result.warning);
         } else {
-            logger.info("[gated-classifier] [{}] '{}' classified {} objects, {} changed",
-                    imageLabel, classifierName, result.nGated, result.nChanged);
+            logger.info("[classify-subset] [{}] '{}' classified {} objects, {} changed",
+                    imageLabel, classifierName, result.nSelected, result.nChanged);
         }
         return result.nChanged;
     }
@@ -133,9 +133,9 @@ public final class GatedObjectClassifierScripts {
         return "image";
     }
 
-    /** Visible for testing. Maps a Groovy options map to a {@link GatingCriteria}. */
-    public static GatingCriteria parseCriteria(Map<String, ?> opts) {
-        GatingCriteria.Builder b = GatingCriteria.builder();
+    /** Visible for testing. Maps a Groovy options map to a {@link SubsetCriteria}. */
+    public static SubsetCriteria parseCriteria(Map<String, ?> opts) {
+        SubsetCriteria.Builder b = SubsetCriteria.builder();
         if (opts == null) {
             return b.build();
         }
@@ -181,7 +181,7 @@ public final class GatedObjectClassifierScripts {
                         includeUnclassified = true;
                     } else {
                         if (trimmed.contains(":")) {
-                            logger.warn("[gated-classifier] Class '{}' contains ':' and will be parsed as a derived class. "
+                            logger.warn("[classify-subset] Class '{}' contains ':' and will be parsed as a derived class. "
                                     + "To treat it as a single class, encode it as a list, e.g. [\"{}\"].",
                                     trimmed, trimmed);
                         }
@@ -214,7 +214,7 @@ public final class GatedObjectClassifierScripts {
                         b.measurementFilter(mf);
                     }
                 } else if (entry != null) {
-                    logger.warn("[gated-classifier] Ignoring non-map entry in 'measurements': {}", entry);
+                    logger.warn("[classify-subset] Ignoring non-map entry in 'measurements': {}", entry);
                 }
             }
         }

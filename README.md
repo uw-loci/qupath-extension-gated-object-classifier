@@ -1,4 +1,4 @@
-# QuPath Extension: Gated Object Classifier
+# QuPath Extension: Classify Object Subset
 
 Run a saved [QuPath](https://qupath.github.io/) object classifier on a chosen
 subset of objects, instead of every object in the image.
@@ -18,7 +18,7 @@ Common uses:
 
 If you have ever used `Classify > Object classification > Apply classifier`
 and wished it could target a subset, this extension is the GUI for that.
-Every Apply is also recorded as a workflow step, so the same gated operation
+Every Apply is also recorded as a workflow step, so the same subset operation
 can be re-run across a whole project as a script.
 
 This pattern was originally explored in
@@ -26,19 +26,19 @@ This pattern was originally explored in
 and discussed in
 [this image.sc forum thread](https://forum.image.sc/t/feature-request-apply-classifiers-to-only-some-selected-objects/86383).
 
-![Gated Object Classifier dialog: a LUCA composite classifier with Object source set to Custom filter, a multi-class Class filter, a measurement filter ("Cell: Autofluorescence max" greater than 11.0), and the live count "337 of 5,353 objects will be classified", shown over a multiplexed immunofluorescence image.](images/gated-object-classifier-dialog.png)
+![Classify Object Subset dialog: a LUCA composite classifier with Object source set to Custom filter, a multi-class Class filter, a measurement filter ("Cell: Autofluorescence max" greater than 11.0), and the live count "337 of 5,353 objects will be classified", shown over a multiplexed immunofluorescence image.](images/classify-object-subset-dialog.png)
 
 ---
 
 ## Install
 
 1. Download the extension JAR from the
-   [Releases page](https://github.com/uw-loci/qupath-extension-gated-object-classifier/releases).
+   [Releases page](https://github.com/uw-loci/qupath-extension-classify-object-subset/releases).
 2. Drag the JAR into a running QuPath window. QuPath will offer to copy it
    into your extensions folder; accept.
 3. Restart QuPath.
 
-The extension appears under `Extensions > Gated Object Classifier`.
+The extension appears under `Extensions > Classify Object Subset`.
 
 **Requires:** QuPath 0.6.0 or later.
 
@@ -59,12 +59,12 @@ This extension exposes that pattern as a dialog:
 - Define the subset declaratively -- by class, by measurement, by current
   selection, or any AND combination.
 - See a live `X of Y objects will be classified` preview before you commit.
-- Click `Show selection` to highlight the gated objects in the viewer.
-- Get a copyable workflow step recorded automatically, so the gated
+- Click `Show selection` to highlight the matching objects in the viewer.
+- Get a copyable workflow step recorded automatically, so the matching
   operation runs over a whole project via `Run > Run for project`.
 
 If you already have a Groovy snippet that does exactly this, keep using it
--- the scripting API (`GatedObjectClassifierScripts.runGatedClassifier`) is
+-- the scripting API (`ClassifySubsetScripts.runClassifySubset`) is
 the same engine the dialog drives, and the recorded workflow steps call
 straight into it.
 
@@ -76,7 +76,7 @@ straight into it.
 1. Open a project and the image you want to classify. Make sure the project
    has at least one saved object classifier
    (`Classify > Object classification > Train object classifier`).
-2. Open `Extensions > Gated Object Classifier > Apply Gated Classification...`.
+2. Open `Extensions > Classify Object Subset > Apply Classification to Subset...`.
 3. Pick a classifier from the dropdown. The dialog shows which classes the
    classifier outputs.
 4. Choose an object source:
@@ -96,12 +96,12 @@ straight into it.
      object must pass every threshold. Each row has its own `x` button to
      remove it.
 6. Watch the preview - `X of Y objects will be classified` updates live.
-   Click `Show selection` to highlight the gated objects in the viewer.
+   Click `Show selection` to highlight the matching objects in the viewer.
 7. (Optional) tick `Preserve existing class` to leave already-classified
    objects untouched (this passes `resetExistingClass = false` to QuPath's
    classifier).
-8. Click `Apply`. The classifier runs on the gated subset, the hierarchy
-   refreshes, and a workflow step named `Apply gated object classifier`
+8. Click `Apply`. The classifier runs on the object subset, the hierarchy
+   refreshes, and a workflow step named `Apply classify object subset`
    is appended to the image's workflow history.
 
 **Keyboard shortcuts in the dialog**
@@ -118,7 +118,7 @@ Each time you click Apply, QuPath records the operation as a reusable step
 so you can batch the same classification across an entire project later.
 
 After you Apply, open the **Workflow** tab in QuPath and you will see a step
-called `Apply gated object classifier`. Right-click it and choose
+called `Apply classify object subset`. Right-click it and choose
 `Create workflow` (or `Create script`) to get a runnable Groovy snippet,
 which you can run on every image in the project via `Run > Run for project`.
 
@@ -128,9 +128,9 @@ which you can run on every image in the project via `Run > Run for project`.
 considers compatible):
 
 ```groovy
-import qupath.ext.gatedobjclassifier.scripting.GatedObjectClassifierScripts
+import qupath.ext.classifyobjectsubset.scripting.ClassifySubsetScripts
 
-GatedObjectClassifierScripts.runGatedClassifier(
+ClassifySubsetScripts.runClassifySubset(
     "MyClassifier",
     [source: "ALL_COMPATIBLE"]
 )
@@ -139,7 +139,7 @@ GatedObjectClassifierScripts.runGatedClassifier(
 **Selected objects only** (script reads the current selection at run time):
 
 ```groovy
-GatedObjectClassifierScripts.runGatedClassifier(
+ClassifySubsetScripts.runClassifySubset(
     "MyClassifier",
     [source: "SELECTED_ONLY"]
 )
@@ -148,7 +148,7 @@ GatedObjectClassifierScripts.runGatedClassifier(
 **Custom filter** combining class membership and a measurement threshold:
 
 ```groovy
-GatedObjectClassifierScripts.runGatedClassifier(
+ClassifySubsetScripts.runClassifySubset(
     "T-cell-classifier",
     [
         source        : "CUSTOM",
@@ -166,7 +166,7 @@ cell area between 50 and 200). Pass a `measurements` list of maps instead of
 the flat `measurement`/`op`/`value1` keys:
 
 ```groovy
-GatedObjectClassifierScripts.runGatedClassifier(
+ClassifySubsetScripts.runClassifySubset(
     "T-cell-classifier",
     [
         source       : "CUSTOM",
@@ -184,7 +184,7 @@ to what classifier A left unclassified):
 ```groovy
 runObjectClassifier("CD20")  // classifier A - QuPath built-in script API
 
-GatedObjectClassifierScripts.runGatedClassifier(
+ClassifySubsetScripts.runClassifySubset(
     "CD4_CD8",  // classifier B
     [
         source : "CUSTOM",
@@ -275,8 +275,8 @@ of them sooner.
 <summary><b>Build from source</b></summary>
 
 ```bash
-git clone https://github.com/uw-loci/qupath-extension-gated-object-classifier
-cd qupath-extension-gated-object-classifier
+git clone https://github.com/uw-loci/qupath-extension-classify-object-subset
+cd qupath-extension-classify-object-subset
 ./gradlew shadowJar
 # JAR appears under build/libs/
 ```
@@ -297,7 +297,7 @@ For general support and feature requests, please post on the
 mention `@Mike_Nelson` to flag the topic for my attention.
 
 Bug reports can also be filed via
-[GitHub Issues](https://github.com/uw-loci/qupath-extension-gated-object-classifier/issues).
+[GitHub Issues](https://github.com/uw-loci/qupath-extension-classify-object-subset/issues).
 Pull requests are welcome - please open an issue first if you are
 planning a substantial change so we can discuss scope.
 
@@ -305,7 +305,7 @@ To refresh the dialog screenshot:
 
 1. Open a real image in QuPath inside a project that has at least one
    saved object classifier.
-2. Open `Extensions > Gated Object Classifier > Apply Gated Classification...`
+2. Open `Extensions > Classify Object Subset > Apply Classification to Subset...`
    and arrange a representative configuration.
 3. Capture the dialog (e.g. with the OS screenshot tool).
 4. Save the image as `docs/screenshot-dialog.png` in this repository.

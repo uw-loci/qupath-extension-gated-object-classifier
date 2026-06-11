@@ -1,4 +1,4 @@
-package qupath.ext.gatedobjclassifier.ui;
+package qupath.ext.classifyobjectsubset.ui;
 
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
@@ -34,14 +34,14 @@ import javafx.util.StringConverter;
 import javafx.util.converter.DoubleStringConverter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import qupath.ext.gatedobjclassifier.core.ClassFilter;
-import qupath.ext.gatedobjclassifier.core.ClassifierLoader;
-import qupath.ext.gatedobjclassifier.core.Comparator;
-import qupath.ext.gatedobjclassifier.core.GatedClassificationRunner;
-import qupath.ext.gatedobjclassifier.core.GatingCriteria;
-import qupath.ext.gatedobjclassifier.core.MeasurementFilter;
-import qupath.ext.gatedobjclassifier.core.ObjectGater;
-import qupath.ext.gatedobjclassifier.core.ObjectSourceMode;
+import qupath.ext.classifyobjectsubset.core.ClassFilter;
+import qupath.ext.classifyobjectsubset.core.ClassifierLoader;
+import qupath.ext.classifyobjectsubset.core.Comparator;
+import qupath.ext.classifyobjectsubset.core.SubsetClassificationRunner;
+import qupath.ext.classifyobjectsubset.core.SubsetCriteria;
+import qupath.ext.classifyobjectsubset.core.MeasurementFilter;
+import qupath.ext.classifyobjectsubset.core.ObjectSubsetSelector;
+import qupath.ext.classifyobjectsubset.core.ObjectSourceMode;
 import qupath.fx.dialogs.Dialogs;
 import qupath.lib.classifiers.object.ObjectClassifier;
 import qupath.lib.gui.QuPathGUI;
@@ -66,11 +66,11 @@ import java.util.Set;
 import java.util.ResourceBundle;
 
 /**
- * Modeless dialog for the Gated Object Classifier extension.
+ * Modeless dialog for the Classify Object Subset extension.
  *
- * <p>Lets the user pick a project classifier and a gating strategy
+ * <p>Lets the user pick a project classifier and a subset strategy
  * (all compatible / current selection / class+measurement custom filter),
- * then applies the classifier to the gated subset and records the operation
+ * then applies the classifier to the object subset and records the operation
  * as a workflow step.</p>
  *
  * <p>Built as a single class (rather than several small {@code Pane} classes)
@@ -78,15 +78,15 @@ import java.util.ResourceBundle;
  * enables/disables filters, every change recomputes the preview - and the
  * extra plumbing for property bridges would not pay for itself.</p>
  */
-public final class GatedClassifierDialog {
+public final class ClassifySubsetDialog {
 
-    private static final Logger logger = LoggerFactory.getLogger(GatedClassifierDialog.class);
+    private static final Logger logger = LoggerFactory.getLogger(ClassifySubsetDialog.class);
 
     private static final ResourceBundle resources =
-            ResourceBundle.getBundle("qupath.ext.gatedobjclassifier.ui.strings");
+            ResourceBundle.getBundle("qupath.ext.classifyobjectsubset.ui.strings");
 
     private static final String DOC_URL =
-            "https://github.com/MichaelSNelson/qupath-extension-gated-object-classifier#readme";
+            "https://github.com/MichaelSNelson/qupath-extension-classify-object-subset#readme";
 
     private final QuPathGUI qupath;
     private final ImageData<BufferedImage> imageData;
@@ -138,7 +138,7 @@ public final class GatedClassifierDialog {
     private final Button applyButton = new Button(resources.getString("button.apply"));
     private final Button closeButton = new Button(resources.getString("button.close"));
 
-    private GatedClassifierDialog(QuPathGUI qupath, ImageData<BufferedImage> imageData) {
+    private ClassifySubsetDialog(QuPathGUI qupath, ImageData<BufferedImage> imageData) {
         this.qupath = qupath;
         this.imageData = imageData;
         this.stage = new Stage();
@@ -161,7 +161,7 @@ public final class GatedClassifierDialog {
                         resources.getString("warning.noImage"));
                 return;
             }
-            new GatedClassifierDialog(qupath, imageData).stage.show();
+            new ClassifySubsetDialog(qupath, imageData).stage.show();
         };
         if (Platform.isFxApplicationThread()) {
             openTask.run();
@@ -207,10 +207,10 @@ public final class GatedClassifierDialog {
         // The ScrollPane's .viewport and .corner sub-regions are painted white
         // by modena.css - styling them requires an actual CSS selector (inline
         // setStyle on the ScrollPane doesn't cascade into the viewport). The
-        // .gated-scroll class is targeted by a tiny stylesheet attached to the
+        // .subset-scroll class is targeted by a tiny stylesheet attached to the
         // scene below so the viewport and corner become transparent and the
         // themed -fx-base from the BorderPane shows through everywhere.
-        scroll.getStyleClass().add("gated-scroll");
+        scroll.getStyleClass().add("subset-scroll");
         root.setCenter(scroll);
 
         // Modena's .scroll-pane > .viewport rule is applied lazily - the
@@ -230,18 +230,18 @@ public final class GatedClassifierDialog {
         // Inline stylesheet (data URL) to neutralise modena's white viewport
         // and corner painting on our ScrollPane. Needed because sub-region
         // selectors can't be hit from an inline setStyle call.
-        String css = ".gated-scroll,"
-                + ".gated-scroll > .viewport,"
-                + ".gated-scroll > .corner {"
+        String css = ".subset-scroll,"
+                + ".subset-scroll > .viewport,"
+                + ".subset-scroll > .corner {"
                 + "  -fx-background-color: transparent;"
                 + "  -fx-background-insets: 0;"
                 + "  -fx-padding: 0;"
                 + "}"
                 // Also neutralise the default white scrollbar track; scrollbar
                 // thumb still picks up the platform theme.
-                + ".gated-scroll > .scroll-bar,"
-                + ".gated-scroll > .scroll-bar > .track,"
-                + ".gated-scroll > .scroll-bar > .track-background {"
+                + ".subset-scroll > .scroll-bar,"
+                + ".subset-scroll > .scroll-bar > .track,"
+                + ".subset-scroll > .scroll-bar > .track-background {"
                 + "  -fx-background-color: transparent;"
                 + "  -fx-background-insets: 0;"
                 + "}";
@@ -688,7 +688,7 @@ public final class GatedClassifierDialog {
     // Preview / count
     // -----------------------------------------------------------------------------
 
-    private List<PathObject> currentGatedSnapshot() {
+    private List<PathObject> currentSubsetSnapshot() {
         if (currentClassifier == null || universeCache.isEmpty()) {
             return Collections.emptyList();
         }
@@ -696,19 +696,19 @@ public final class GatedClassifierDialog {
                 ? imageData.getHierarchy().getSelectionModel().getSelectedObjects()
                 : Collections.emptyList();
         try {
-            return ObjectGater.apply(universeCache, selected, buildCriteriaForPreview());
+            return ObjectSubsetSelector.apply(universeCache, selected, buildCriteriaForPreview());
         } catch (Exception e) {
-            logger.debug("Preview gating failed", e);
+            logger.debug("Preview subset selection failed", e);
             return Collections.emptyList();
         }
     }
 
-    private int currentGatedCount() {
-        return currentGatedSnapshot().size();
+    private int currentSubsetCount() {
+        return currentSubsetSnapshot().size();
     }
 
     private void recomputePreview() {
-        int gated = currentGatedCount();
+        int subset = currentSubsetCount();
         int universe = universeCache.size();
 
         if (currentClassifier == null) {
@@ -726,9 +726,9 @@ public final class GatedClassifierDialog {
         }
 
         previewLabel.setText(MessageFormat.format(
-                resources.getString("label.preview.count"), gated, universe));
+                resources.getString("label.preview.count"), subset, universe));
 
-        if (gated == 0) {
+        if (subset == 0) {
             String reason = resources.getString("label.preview.zero");
             if (sourceSelected.isSelected()) {
                 int sel = imageData.getHierarchy() == null ? 0
@@ -741,18 +741,18 @@ public final class GatedClassifierDialog {
         } else {
             // Surface missing-feature warnings before Apply, not just after,
             // so the user knows the classifier may not behave as expected.
-            String missing = describeMissingFeatures(currentGatedSnapshot());
+            String missing = describeMissingFeatures(currentSubsetSnapshot());
             setWarning(missing);
         }
-        applyButton.setDisable(currentClassifier == null || gated == 0);
+        applyButton.setDisable(currentClassifier == null || subset == 0);
     }
 
-    private String describeMissingFeatures(List<PathObject> gated) {
-        if (currentClassifier == null || gated == null || gated.isEmpty()) {
+    private String describeMissingFeatures(List<PathObject> subset) {
+        if (currentClassifier == null || subset == null || subset.isEmpty()) {
             return null;
         }
         try {
-            var missing = currentClassifier.getMissingFeatures(imageData, gated);
+            var missing = currentClassifier.getMissingFeatures(imageData, subset);
             if (missing == null || missing.isEmpty()) {
                 return null;
             }
@@ -786,16 +786,16 @@ public final class GatedClassifierDialog {
     // -----------------------------------------------------------------------------
 
     private void showCurrentSelectionInViewer() {
-        List<PathObject> gated = currentGatedSnapshot();
+        List<PathObject> subset = currentSubsetSnapshot();
         PathObjectHierarchy hierarchy = imageData.getHierarchy();
         if (hierarchy == null) {
             return;
         }
-        if (gated.isEmpty()) {
+        if (subset.isEmpty()) {
             hierarchy.getSelectionModel().clearSelection();
             return;
         }
-        hierarchy.getSelectionModel().setSelectedObjects(gated, gated.get(0));
+        hierarchy.getSelectionModel().setSelectedObjects(subset, subset.get(0));
     }
 
     private void openDocumentation() {
@@ -811,8 +811,8 @@ public final class GatedClassifierDialog {
         Dialogs.showInfoNotification(resources.getString("dialog.title"), DOC_URL);
     }
 
-    private GatingCriteria buildCriteriaForPreview() {
-        GatingCriteria.Builder b = GatingCriteria.builder()
+    private SubsetCriteria buildCriteriaForPreview() {
+        SubsetCriteria.Builder b = SubsetCriteria.builder()
                 .source(currentSource())
                 .preserveExistingClass(preserveClassCheck.isSelected());
         if (sourceCustom.isSelected()) {
@@ -1046,14 +1046,14 @@ public final class GatedClassifierDialog {
         }
         currentClassifier = freshClassifier;
 
-        GatingCriteria criteria = buildCriteriaForPreview();
+        SubsetCriteria criteria = buildCriteriaForPreview();
         Collection<PathObject> selection = imageData.getHierarchy() != null
                 ? imageData.getHierarchy().getSelectionModel().getSelectedObjects()
                 : Collections.emptyList();
 
         applyButton.setDisable(true);
         try {
-            GatedClassificationRunner.Result result = GatedClassificationRunner.run(
+            SubsetClassificationRunner.Result result = SubsetClassificationRunner.run(
                     imageData, currentClassifier, classifierName, selection, criteria, true);
 
             if (!result.ranSuccessfully()) {
@@ -1063,7 +1063,7 @@ public final class GatedClassifierDialog {
             } else {
                 String msg = MessageFormat.format(
                         resources.getString("notification.success.message"),
-                        result.nGated, result.nChanged);
+                        result.nSelected, result.nChanged);
                 if (result.warning != null) {
                     msg = msg + "\n" + result.warning;
                     Dialogs.showWarningNotification(
@@ -1074,7 +1074,7 @@ public final class GatedClassifierDialog {
                 }
             }
         } catch (RuntimeException e) {
-            logger.error("Gated classification failed", e);
+            logger.error("Subset classification failed", e);
             Dialogs.showErrorMessage(
                     resources.getString("notification.error.title"), e.getMessage());
         } finally {

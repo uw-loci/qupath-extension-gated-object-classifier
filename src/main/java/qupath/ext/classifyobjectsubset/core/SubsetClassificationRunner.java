@@ -1,4 +1,4 @@
-package qupath.ext.gatedobjclassifier.core;
+package qupath.ext.classifyobjectsubset.core;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,12 +15,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Orchestrates a single gated-classification run.
+ * Orchestrates a single subset-classification run.
  *
  * <p>Steps:</p>
  * <ol>
  *   <li>Resolve the universe of compatible objects from the classifier;</li>
- *   <li>Compute the gated subset via {@link ObjectGater};</li>
+ *   <li>Compute the object subset via {@link ObjectSubsetSelector};</li>
  *   <li>Call {@link ObjectClassifier#classifyObjects(ImageData, Collection, boolean)};</li>
  *   <li>Fire a hierarchy classification-changed event so the UI updates and
  *       the project saves the result;</li>
@@ -28,17 +28,17 @@ import java.util.Map;
  *       history workflow so the user can copy the operation as a script.</li>
  * </ol>
  */
-public final class GatedClassificationRunner {
+public final class SubsetClassificationRunner {
 
-    private static final Logger logger = LoggerFactory.getLogger(GatedClassificationRunner.class);
+    private static final Logger logger = LoggerFactory.getLogger(SubsetClassificationRunner.class);
 
-    private GatedClassificationRunner() {}
+    private SubsetClassificationRunner() {}
 
     public static Result run(ImageData<BufferedImage> imageData,
                              ObjectClassifier<BufferedImage> classifier,
                              String classifierName,
                              Collection<? extends PathObject> selectedObjects,
-                             GatingCriteria criteria,
+                             SubsetCriteria criteria,
                              boolean recordWorkflow) {
         if (imageData == null) {
             return Result.error("No image data available.");
@@ -53,16 +53,16 @@ public final class GatedClassificationRunner {
         }
 
         // Snapshot to avoid concurrent modification during classification
-        List<PathObject> gated = new ArrayList<>(
-                ObjectGater.apply(universe, selectedObjects == null ? Collections.emptyList() : selectedObjects, criteria));
-        if (gated.isEmpty()) {
+        List<PathObject> subset = new ArrayList<>(
+                ObjectSubsetSelector.apply(universe, selectedObjects == null ? Collections.emptyList() : selectedObjects, criteria));
+        if (subset.isEmpty()) {
             return new Result(universe.size(), 0, 0, "No objects match the current filters.");
         }
 
         // Surface missing-feature warnings the same way QuPath's built-in command does
         String missingWarning = null;
         try {
-            Map<String, Integer> missing = classifier.getMissingFeatures(imageData, gated);
+            Map<String, Integer> missing = classifier.getMissingFeatures(imageData, subset);
             if (missing != null && !missing.isEmpty()) {
                 missingWarning = formatMissingFeatures(missing);
                 logger.warn("Classifier has missing features: {}", missingWarning);
@@ -74,16 +74,16 @@ public final class GatedClassificationRunner {
         boolean resetExistingClass = !criteria.preserveExistingClass();
         int nChanged;
         try {
-            nChanged = classifier.classifyObjects(imageData, gated, resetExistingClass);
+            nChanged = classifier.classifyObjects(imageData, subset, resetExistingClass);
         } catch (RuntimeException e) {
-            logger.error("Classifier threw while classifying gated objects", e);
+            logger.error("Classifier threw while classifying the object subset", e);
             return Result.error("Classifier failed: " + e.getMessage());
         }
 
         if (nChanged > 0) {
             PathObjectHierarchy hierarchy = imageData.getHierarchy();
             if (hierarchy != null) {
-                hierarchy.fireObjectClassificationsChangedEvent(classifier, gated);
+                hierarchy.fireObjectClassificationsChangedEvent(classifier, subset);
             }
         }
 
@@ -91,13 +91,13 @@ public final class GatedClassificationRunner {
             try {
                 imageData.getHistoryWorkflow().addStep(WorkflowScriptBuilder.build(classifierName, criteria));
             } catch (Exception e) {
-                logger.warn("Failed to add workflow step for gated classification", e);
+                logger.warn("Failed to add workflow step for subset classification", e);
             }
         }
 
-        logger.info("Gated classification: {} of {} objects classified, {} changed",
-                gated.size(), universe.size(), nChanged);
-        return new Result(universe.size(), gated.size(), nChanged, missingWarning);
+        logger.info("Subset classification: {} of {} objects classified, {} changed",
+                subset.size(), universe.size(), nChanged);
+        return new Result(universe.size(), subset.size(), nChanged, missingWarning);
     }
 
     private static String formatMissingFeatures(Map<String, Integer> missing) {
@@ -124,19 +124,19 @@ public final class GatedClassificationRunner {
      */
     public static final class Result {
         public final int nUniverse;
-        public final int nGated;
+        public final int nSelected;
         public final int nChanged;
         public final String warning;
 
-        public Result(int nUniverse, int nGated, int nChanged, String warning) {
+        public Result(int nUniverse, int nSelected, int nChanged, String warning) {
             this.nUniverse = nUniverse;
-            this.nGated = nGated;
+            this.nSelected = nSelected;
             this.nChanged = nChanged;
             this.warning = warning;
         }
 
         public boolean ranSuccessfully() {
-            return nGated > 0;
+            return nSelected > 0;
         }
 
         public static Result error(String message) {

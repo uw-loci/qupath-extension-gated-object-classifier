@@ -1,4 +1,4 @@
-package qupath.ext.gatedobjclassifier.core;
+package qupath.ext.classifyobjectsubset.core;
 
 import org.junit.jupiter.api.Test;
 import qupath.lib.objects.PathObject;

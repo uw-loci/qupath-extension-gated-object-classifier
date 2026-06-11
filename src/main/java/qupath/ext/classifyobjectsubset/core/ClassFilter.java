@@ -1,4 +1,4 @@
-package qupath.ext.gatedobjclassifier.core;
+package qupath.ext.classifyobjectsubset.core;
 
 import qupath.lib.objects.PathObject;
 import qupath.lib.objects.classes.PathClass;

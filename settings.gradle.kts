@@ -14,4 +14,4 @@ plugins {
     id("io.github.qupath.qupath-extension-settings") version "0.2.1"
 }
 
-rootProject.name = "qupath-extension-gated-object-classifier"
+rootProject.name = "qupath-extension-classify-object-subset"

@@ -1,4 +1,4 @@
-package qupath.ext.gatedobjclassifier.core;
+package qupath.ext.classifyobjectsubset.core;
 
 import qupath.lib.objects.classes.PathClassTools;
 import qupath.lib.plugins.workflow.DefaultScriptableWorkflowStep;
@@ -11,25 +11,25 @@ import java.util.List;
  * image's history workflow when the user clicks Apply.
  *
  * <p>The script always calls
- * {@link qupath.ext.gatedobjclassifier.scripting.GatedObjectClassifierScripts#runGatedClassifier(String, java.util.Map)}
+ * {@link qupath.ext.classifyobjectsubset.scripting.ClassifySubsetScripts#runClassifySubset(String, java.util.Map)}
  * with a small map of options keyed by strings - that keeps the script short,
  * stable across versions, and easy to edit by hand.</p>
  */
 public final class WorkflowScriptBuilder {
 
-    public static final String STEP_NAME = "Apply gated object classifier";
+    public static final String STEP_NAME = "Apply classify object subset";
 
     private WorkflowScriptBuilder() {}
 
-    public static WorkflowStep build(String classifierName, GatingCriteria criteria) {
+    public static WorkflowStep build(String classifierName, SubsetCriteria criteria) {
         return new DefaultScriptableWorkflowStep(STEP_NAME, buildScript(classifierName, criteria));
     }
 
     /** Visible for testing. */
-    public static String buildScript(String classifierName, GatingCriteria criteria) {
+    public static String buildScript(String classifierName, SubsetCriteria criteria) {
         StringBuilder sb = new StringBuilder();
-        sb.append("import qupath.ext.gatedobjclassifier.scripting.GatedObjectClassifierScripts\n\n");
-        sb.append("GatedObjectClassifierScripts.runGatedClassifier(\n");
+        sb.append("import qupath.ext.classifyobjectsubset.scripting.ClassifySubsetScripts\n\n");
+        sb.append("ClassifySubsetScripts.runClassifySubset(\n");
         sb.append("    \"").append(escape(classifierName)).append("\",\n");
         sb.append("    [\n");
 
