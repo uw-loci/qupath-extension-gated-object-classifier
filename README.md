@@ -40,7 +40,7 @@ and discussed in
 
 The extension appears under `Extensions > Classify Object Subset`.
 
-**Requires:** QuPath 0.6.0 or later.
+**Requires:** QuPath 0.7.0 or later.
 
 ---
 
