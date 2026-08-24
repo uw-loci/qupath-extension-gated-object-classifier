@@ -34,7 +34,7 @@ public class ClassifyObjectSubsetExtension implements QuPathExtension, GitHubPro
     private static final String EXTENSION_DESCRIPTION = resources.getString("description");
     private static final Version EXTENSION_QUPATH_VERSION = Version.parse("v0.7.0");
     private static final GitHubRepo EXTENSION_REPOSITORY =
-            GitHubRepo.create(EXTENSION_NAME, "MichaelSNelson", "qupath-extension-classify-object-subset");
+            GitHubRepo.create(EXTENSION_NAME, "uw-loci", "qupath-extension-classify-object-subset");
 
     @Override
     public String getName() {
