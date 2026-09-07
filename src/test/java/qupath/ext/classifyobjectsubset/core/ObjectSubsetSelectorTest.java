@@ -61,6 +61,63 @@ class ObjectSubsetSelectorTest {
         assertThat(ObjectSubsetSelector.apply(u, Collections.emptyList(), crit)).isEmpty();
     }
 
+    /**
+     * A gated multiplex hierarchy: one bare marker class plus several classes
+     * built on top of it, alongside an unrelated marker whose name shares a
+     * prefix with it.
+     */
+    private static List<PathObject> multiplexUniverse() {
+        return List.of(
+                obj(PathClass.fromString("CD3"), 10),
+                obj(PathClass.fromString("CD3: CD8"), 20),
+                obj(PathClass.fromString("CD8: CD3"), 30),
+                obj(PathClass.fromString("CD3: CD8: PD1"), 40),
+                obj(PathClass.fromString("CD31"), 50),
+                obj(PathClass.fromString("CD31: CD8"), 60),
+                obj(PathClass.fromString("CD20"), 70),
+                obj(null, 80)
+        );
+    }
+
+    @Test
+    void customWithDerivedClassFilterReachesEveryClassBuiltOnTheCheckedOne() {
+        var u = multiplexUniverse();
+        ClassFilter cf = ClassFilter.of(Set.of(PathClass.fromString("CD3")), false,
+                ClassFilter.MatchMode.INCLUDE_DERIVED);
+        var crit = SubsetCriteria.builder().source(ObjectSourceMode.CUSTOM).classFilter(cf).build();
+
+        var subset = ObjectSubsetSelector.apply(u, Collections.emptyList(), crit);
+
+        // CD3 and everything derived from it, in universe order; never CD31.
+        assertThat(subset).containsExactly(u.get(0), u.get(1), u.get(2), u.get(3));
+    }
+
+    @Test
+    void customWithDerivedClassFilterCombinesWithAMeasurementThreshold() {
+        var u = multiplexUniverse();
+        ClassFilter cf = ClassFilter.of(Set.of(PathClass.fromString("CD3")), false,
+                ClassFilter.MatchMode.INCLUDE_DERIVED);
+        var crit = SubsetCriteria.builder()
+                .source(ObjectSourceMode.CUSTOM)
+                .classFilter(cf)
+                .measurementFilter(new MeasurementFilter("area", Comparator.GT, 25))
+                .build();
+
+        var subset = ObjectSubsetSelector.apply(u, Collections.emptyList(), crit);
+
+        assertThat(subset).containsExactly(u.get(2), u.get(3));
+    }
+
+    @Test
+    void exactClassFilterOnTheSameUniverseTakesOnlyTheBareClass() {
+        var u = multiplexUniverse();
+        ClassFilter cf = ClassFilter.of(Set.of(PathClass.fromString("CD3")), false);
+        var crit = SubsetCriteria.builder().source(ObjectSourceMode.CUSTOM).classFilter(cf).build();
+
+        assertThat(ObjectSubsetSelector.apply(u, Collections.emptyList(), crit))
+                .containsExactly(u.get(0));
+    }
+
     @Test
     void customWithClassFilterOnly() {
         var u = universe();

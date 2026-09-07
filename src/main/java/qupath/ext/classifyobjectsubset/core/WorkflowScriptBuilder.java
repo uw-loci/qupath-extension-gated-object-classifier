@@ -42,6 +42,9 @@ public final class WorkflowScriptBuilder {
             criteria.classFilter().ifPresent(cf -> {
                 if (!cf.isAcceptAll()) {
                     appendEntry(sb, false, "classes", classesLiteral(cf));
+                    if (cf.includesDerived()) {
+                        appendEntry(sb, false, "includeDerived", "true");
+                    }
                 }
             });
             List<MeasurementFilter> mfs = criteria.measurementFilters();

@@ -135,6 +135,27 @@ class WorkflowScriptBuilderTest {
     }
 
     @Test
+    void includeDerivedIsEmittedOnlyWhenTheFilterUsesIt() {
+        Set<PathClass> classes = new LinkedHashSet<>();
+        classes.add(PathClass.fromString("T cell"));
+
+        SubsetCriteria exact = SubsetCriteria.builder()
+                .source(ObjectSourceMode.CUSTOM)
+                .classFilter(ClassFilter.of(classes, false))
+                .build();
+        assertThat(WorkflowScriptBuilder.buildScript("c", exact))
+                .doesNotContain("includeDerived");
+
+        SubsetCriteria derived = SubsetCriteria.builder()
+                .source(ObjectSourceMode.CUSTOM)
+                .classFilter(ClassFilter.of(classes, false, ClassFilter.MatchMode.INCLUDE_DERIVED))
+                .build();
+        assertThat(WorkflowScriptBuilder.buildScript("c", derived))
+                .contains("classes : [[\"T cell\"]]")
+                .contains("includeDerived : true");
+    }
+
+    @Test
     void roundTripParseFromGroovyOptionsMatchesOriginal() {
         // Just sanity-check that the keys/values our builder emits are the same
         // ones the scripting facade understands. Real round-trip is exercised by

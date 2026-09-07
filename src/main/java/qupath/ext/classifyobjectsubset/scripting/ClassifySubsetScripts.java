@@ -39,6 +39,11 @@ import java.util.Set;
  *       element verbatim - use this form for class names that themselves
  *       contain ":"). The literal {@code "(unclassified)"} matches objects
  *       with no class.</li>
+ *   <li>{@code includeDerived} - {@code true} to also match classifications
+ *       derived from the listed {@code classes}, so {@code "T cell"} matches
+ *       {@code "T cell: CD8"} and {@code "CD8: T cell"} as well. Name
+ *       components are matched whole, so {@code "CD3"} never matches
+ *       {@code "CD31"}. Defaults to {@code false} (exact matches only).</li>
  *   <li>{@code measurement} - measurement name for a single threshold
  *       (CUSTOM only).</li>
  *   <li>{@code op}          - {@link Comparator} name, e.g. {@code "GT"}.</li>
@@ -189,7 +194,9 @@ public final class ClassifySubsetScripts {
                     }
                 }
             }
-            ClassFilter cf = ClassFilter.of(classes, includeUnclassified);
+            boolean includeDerived = readBoolean(opts.get("includeDerived"), false);
+            ClassFilter cf = ClassFilter.of(classes, includeUnclassified,
+                    includeDerived ? ClassFilter.MatchMode.INCLUDE_DERIVED : ClassFilter.MatchMode.EXACT);
             if (!cf.isAcceptAll()) {
                 b.classFilter(cf);
             }
@@ -219,12 +226,7 @@ public final class ClassifySubsetScripts {
             }
         }
 
-        Object preserve = opts.get("preserveClass");
-        if (preserve instanceof Boolean) {
-            b.preserveExistingClass((Boolean) preserve);
-        } else if (preserve != null) {
-            b.preserveExistingClass(Boolean.parseBoolean(preserve.toString()));
-        }
+        b.preserveExistingClass(readBoolean(opts.get("preserveClass"), false));
 
         return b.build();
     }
@@ -280,6 +282,16 @@ public final class ClassifySubsetScripts {
         double v1 = readDouble(map.get("value1"), 0.0);
         double v2 = readDouble(map.get("value2"), Double.NaN);
         return new MeasurementFilter(measurement.toString(), op, v1, v2);
+    }
+
+    private static boolean readBoolean(Object raw, boolean fallback) {
+        if (raw == null) {
+            return fallback;
+        }
+        if (raw instanceof Boolean b) {
+            return b;
+        }
+        return Boolean.parseBoolean(raw.toString().trim());
     }
 
     private static double readDouble(Object raw, double fallback) {

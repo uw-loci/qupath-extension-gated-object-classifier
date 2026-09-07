@@ -1,9 +1,12 @@
 package qupath.ext.classifyobjectsubset.ui;
 
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -30,6 +33,7 @@ import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 import javafx.util.StringConverter;
 import javafx.util.converter.DoubleStringConverter;
 import org.slf4j.Logger;
@@ -64,6 +68,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.ResourceBundle;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Modeless dialog for the Classify Object Subset extension.
@@ -84,6 +91,12 @@ public final class ClassifySubsetDialog {
 
     private static final ResourceBundle resources =
             ResourceBundle.getBundle("qupath.ext.classifyobjectsubset.ui.strings");
+
+    /**
+     * Debounce window for the preview recount. Long enough to swallow a burst
+     * of checkbox clicks or keystrokes, short enough to feel immediate.
+     */
+    private static final long PREVIEW_DEBOUNCE_MS = 150;
 
     private static final String DOC_URL =
             "https://github.com/MichaelSNelson/qupath-extension-classify-object-subset#readme";
@@ -116,6 +129,16 @@ public final class ClassifySubsetDialog {
     // instead of ctrl-clicking a multi-select list.
     private final ListView<ClassEntry> classListView = new ListView<>();
     private final CheckBox includeUnclassifiedCheck = new CheckBox(resources.getString("label.filter.class.includeUnclassified"));
+    private final CheckBox includeDerivedCheck = new CheckBox(resources.getString("label.filter.class.includeDerived"));
+    private final TextField classFindField = new TextField();
+    private final Label classCheckedLabel = new Label();
+    /**
+     * Master list of class rows. {@link #classListView} shows a
+     * {@link FilteredList} view of it, so the Find box narrows what is visible
+     * without disturbing which rows are checked.
+     */
+    private final ObservableList<ClassEntry> allClassEntries = FXCollections.observableArrayList();
+    private final FilteredList<ClassEntry> shownClassEntries = new FilteredList<>(allClassEntries, e -> true);
     // Classes whose checkbox is ticked. Tracked separately from the ListView
     // items so the ticks survive a repopulation (classifier / hierarchy change).
     private final Set<PathClass> checkedClasses = new LinkedHashSet<>();
@@ -137,6 +160,16 @@ public final class ClassifySubsetDialog {
     // --- Actions
     private final Button applyButton = new Button(resources.getString("button.apply"));
     private final Button closeButton = new Button(resources.getString("button.close"));
+
+    // Preview scheduling. Every control change asks for a recount; on a
+    // hierarchy of hundreds of thousands of objects that pass is far too slow
+    // to run inline on the FX thread for each click, so requests are coalesced
+    // by a short debounce and the count itself runs on a background thread.
+    private final PauseTransition previewDebounce = new PauseTransition(Duration.millis(PREVIEW_DEBOUNCE_MS));
+    private final AtomicLong previewGeneration = new AtomicLong();
+    private ExecutorService previewExecutor;
+    /** Set while a bulk check/uncheck runs, so one recount follows the batch. */
+    private boolean suppressPreview;
 
     private ClassifySubsetDialog(QuPathGUI qupath, ImageData<BufferedImage> imageData) {
         this.qupath = qupath;
@@ -330,17 +363,38 @@ public final class ClassifySubsetDialog {
         Label classTitle = new Label(resources.getString("label.filter.class.title"));
         classTitle.setStyle("-fx-font-weight: bold;");
         classListView.setCellFactory(CheckBoxListCell.forListView(ClassEntry::selectedProperty));
+        classListView.setItems(shownClassEntries);
         classListView.setPrefHeight(160);
         classListView.setMinHeight(120);
         classListView.setPlaceholder(new Label(resources.getString("label.filter.class.placeholder")));
         classListView.setTooltip(new Tooltip(resources.getString("tooltip.classFilter")));
         VBox.setVgrow(classListView, Priority.ALWAYS);
+
+        // Find row. On highly multiplexed data the class list runs to dozens of
+        // combinatorial entries, and ticking each one by hand is both tedious
+        // and easy to get wrong - so narrow the list by substring, then tick
+        // everything still showing in one click.
+        classFindField.setPromptText(resources.getString("label.filter.class.find"));
+        classFindField.setTooltip(new Tooltip(resources.getString("tooltip.classFilter.find")));
+        HBox.setHgrow(classFindField, Priority.ALWAYS);
+        Button checkShown = new Button(resources.getString("label.filter.class.checkShown"));
+        checkShown.setTooltip(new Tooltip(resources.getString("tooltip.classFilter.checkShown")));
+        checkShown.setOnAction(e -> setCheckedForShownEntries(true));
+        Button uncheckShown = new Button(resources.getString("label.filter.class.uncheckShown"));
+        uncheckShown.setTooltip(new Tooltip(resources.getString("tooltip.classFilter.uncheckShown")));
+        uncheckShown.setOnAction(e -> setCheckedForShownEntries(false));
+        HBox findRow = new HBox(6, classFindField, checkShown, uncheckShown);
+        findRow.setAlignment(Pos.CENTER_LEFT);
+
         includeUnclassifiedCheck.setTooltip(new Tooltip(resources.getString("tooltip.classFilter.unclassified")));
+        includeDerivedCheck.setTooltip(new Tooltip(resources.getString("tooltip.classFilter.derived")));
         Button classClear = new Button(resources.getString("label.filter.class.clear"));
         classClear.setOnAction(e -> clearCheckedClasses());
-        HBox classButtons = new HBox(8, includeUnclassifiedCheck, classClear);
+        classCheckedLabel.setStyle("-fx-opacity: 0.75;");
+        HBox classButtons = new HBox(8, includeUnclassifiedCheck, includeDerivedCheck,
+                classClear, spacer(), classCheckedLabel);
         classButtons.setAlignment(Pos.CENTER_LEFT);
-        classBox.getChildren().addAll(classTitle, classListView, classButtons);
+        classBox.getChildren().addAll(classTitle, findRow, classListView, classButtons);
 
         // Measurement filter -- one or more threshold rows, AND-combined.
         VBox measBox = new VBox(6);
@@ -435,6 +489,21 @@ public final class ClassifySubsetDialog {
         // Measurement rows recompute the preview as they are edited; the
         // per-row change listeners are wired in addMeasurementRow().
         includeUnclassifiedCheck.selectedProperty().addListener((obs, oldV, newV) -> recomputePreview());
+        includeDerivedCheck.selectedProperty().addListener((obs, oldV, newV) -> recomputePreview());
+
+        // Find box narrows the visible rows only; ticks are held on the entries
+        // themselves and in checkedClasses, so a class filtered out of view
+        // stays part of the filter.
+        classFindField.textProperty().addListener((obs, oldV, newV) -> applyClassFindFilter(newV));
+
+        // The debounce fires once a burst of edits has settled; the recount
+        // itself then runs off the FX thread.
+        previewDebounce.setOnFinished(e -> launchPreview());
+        previewExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "classify-subset-preview");
+            t.setDaemon(true);
+            return t;
+        });
 
         // Hierarchy selection -> source counts and preview. Hold a reference
         // so we can detach on close - otherwise the listener leaks and keeps
@@ -486,6 +555,14 @@ public final class ClassifySubsetDialog {
         qupath.imageDataProperty().addListener(imageSwitchListener);
 
         stage.setOnHidden(e -> {
+            previewDebounce.stop();
+            // Bump the generation so any in-flight background recount discards
+            // its result instead of touching controls on a closed dialog.
+            previewGeneration.incrementAndGet();
+            if (previewExecutor != null) {
+                previewExecutor.shutdownNow();
+                previewExecutor = null;
+            }
             if (hierarchy != null) {
                 if (hierarchySelectionListener != null) {
                     hierarchy.getSelectionModel().removePathObjectSelectionListener(hierarchySelectionListener);
@@ -661,11 +738,15 @@ public final class ClassifySubsetDialog {
                 } else {
                     checkedClasses.remove(pc);
                 }
+                refreshCheckedCountLabel();
                 recomputePreview();
             });
             entries.add(entry);
         }
-        classListView.setItems(FXCollections.observableArrayList(entries));
+        // Replace the master list; the FilteredList view and its predicate,
+        // and therefore whatever the user typed in Find, survive untouched.
+        allClassEntries.setAll(entries);
+        refreshCheckedCountLabel();
 
         // Refresh the measurement-name choices in every existing threshold row,
         // preserving each row's current selection.
@@ -674,14 +755,60 @@ public final class ClassifySubsetDialog {
         }
     }
 
-    private void refreshSourceCounts() {
-        int n = 0;
-        var hierarchy = imageData.getHierarchy();
-        if (hierarchy != null) {
-            n = hierarchy.getSelectionModel().getSelectedObjects().size();
+    /**
+     * Narrow the visible class rows to those whose classification contains
+     * {@code text}, case-insensitively. Checked state is untouched.
+     */
+    private void applyClassFindFilter(String text) {
+        String needle = text == null ? "" : text.trim().toLowerCase(Locale.ROOT);
+        if (needle.isEmpty()) {
+            shownClassEntries.setPredicate(entry -> true);
+        } else {
+            shownClassEntries.setPredicate(entry ->
+                    entry.toString().toLowerCase(Locale.ROOT).contains(needle));
         }
+        refreshCheckedCountLabel();
+    }
+
+    /**
+     * Check or uncheck every row currently visible in the list - i.e. every row
+     * matching the Find box. Rows hidden by the filter keep their state, so
+     * this narrows to a group and acts on exactly that group.
+     */
+    private void setCheckedForShownEntries(boolean checked) {
+        // The per-entry listeners maintain checkedClasses one row at a time;
+        // suppress the recount until the whole batch has been applied.
+        suppressPreview = true;
+        try {
+            for (ClassEntry entry : new ArrayList<>(shownClassEntries)) {
+                entry.selectedProperty().set(checked);
+            }
+        } finally {
+            suppressPreview = false;
+        }
+        refreshCheckedCountLabel();
+        recomputePreview();
+    }
+
+    private void refreshCheckedCountLabel() {
+        int total = allClassEntries.size();
+        int shown = shownClassEntries.size();
+        String text;
+        if (shown == total) {
+            text = MessageFormat.format(
+                    resources.getString("label.filter.class.checkedCount"),
+                    checkedClasses.size(), total);
+        } else {
+            text = MessageFormat.format(
+                    resources.getString("label.filter.class.checkedCountFiltered"),
+                    checkedClasses.size(), total, shown);
+        }
+        classCheckedLabel.setText(text);
+    }
+
+    private void refreshSourceCounts() {
         selectedCountLabel.setText(MessageFormat.format(
-                resources.getString("label.source.selectedCount"), n));
+                resources.getString("label.source.selectedCount"), selectedObjectCount()));
     }
 
     // -----------------------------------------------------------------------------
@@ -692,11 +819,8 @@ public final class ClassifySubsetDialog {
         if (currentClassifier == null || universeCache.isEmpty()) {
             return Collections.emptyList();
         }
-        Collection<PathObject> selected = imageData.getHierarchy() != null
-                ? imageData.getHierarchy().getSelectionModel().getSelectedObjects()
-                : Collections.emptyList();
         try {
-            return ObjectSubsetSelector.apply(universeCache, selected, buildCriteriaForPreview());
+            return ObjectSubsetSelector.apply(universeCache, currentSelection(), buildCriteriaForPreview());
         } catch (Exception e) {
             logger.debug("Preview subset selection failed", e);
             return Collections.emptyList();
@@ -707,17 +831,37 @@ public final class ClassifySubsetDialog {
         return currentSubsetSnapshot().size();
     }
 
+    /**
+     * Ask for a preview recount. Cheap and safe to call from any control
+     * listener: requests inside the debounce window collapse into one
+     * background pass, so ticking twenty classes costs one recount, not twenty.
+     */
     private void recomputePreview() {
-        int subset = currentSubsetCount();
-        int universe = universeCache.size();
+        if (suppressPreview) {
+            return;
+        }
+        // Invalidate here, not only at submit time: the early-exit paths in
+        // launchPreview() write the labels directly, and without this bump an
+        // older in-flight recount could land afterwards and undo them.
+        previewGeneration.incrementAndGet();
+        previewDebounce.playFromStart();
+    }
 
+    /**
+     * Snapshot the inputs on the FX thread, then count the subset (and check
+     * for missing features) on a background thread. A generation counter makes
+     * a superseded result discard itself instead of overwriting a newer one.
+     */
+    private void launchPreview() {
         if (currentClassifier == null) {
             previewLabel.setText("");
             applyButton.setDisable(true);
             setWarning(null);
             return;
         }
-        if (universe == 0) {
+        List<PathObject> universe = universeCache;
+        final int universeSize = universe.size();
+        if (universeSize == 0) {
             previewLabel.setText(MessageFormat.format(
                     resources.getString("label.preview.count"), 0, 0));
             setWarning(resources.getString("warning.incompatibleClassifier"));
@@ -725,34 +869,72 @@ public final class ClassifySubsetDialog {
             return;
         }
 
+        // Everything the background pass touches is read here, on the FX
+        // thread, so the task never reads a control or a mutating collection.
+        final SubsetCriteria criteria = buildCriteriaForPreview();
+        final ObjectClassifier<BufferedImage> classifier = currentClassifier;
+        final boolean selectedSourceEmpty = sourceSelected.isSelected() && selectedObjectCount() == 0;
+        final List<PathObject> selection = new ArrayList<>(currentSelection());
+        final long generation = previewGeneration.incrementAndGet();
+
+        ExecutorService executor = previewExecutor;
+        if (executor == null || executor.isShutdown()) {
+            return;
+        }
+        executor.submit(() -> {
+            int count;
+            String missing;
+            try {
+                List<PathObject> subset = ObjectSubsetSelector.apply(universe, selection, criteria);
+                count = subset.size();
+                missing = describeMissingFeatures(classifier, subset);
+            } catch (Exception ex) {
+                logger.debug("Preview subset selection failed", ex);
+                count = 0;
+                missing = null;
+            }
+            final int finalCount = count;
+            final String finalMissing = missing;
+            Platform.runLater(() -> {
+                if (generation != previewGeneration.get() || !stage.isShowing()) {
+                    return;
+                }
+                applyPreviewResult(finalCount, universeSize, finalMissing, selectedSourceEmpty);
+            });
+        });
+    }
+
+    private void applyPreviewResult(int subset, int universe, String missing, boolean selectedSourceEmpty) {
         previewLabel.setText(MessageFormat.format(
                 resources.getString("label.preview.count"), subset, universe));
-
         if (subset == 0) {
-            String reason = resources.getString("label.preview.zero");
-            if (sourceSelected.isSelected()) {
-                int sel = imageData.getHierarchy() == null ? 0
-                        : imageData.getHierarchy().getSelectionModel().getSelectedObjects().size();
-                if (sel == 0) {
-                    reason = resources.getString("warning.noSelection");
-                }
-            }
-            setWarning(reason);
+            setWarning(selectedSourceEmpty
+                    ? resources.getString("warning.noSelection")
+                    : resources.getString("label.preview.zero"));
         } else {
             // Surface missing-feature warnings before Apply, not just after,
             // so the user knows the classifier may not behave as expected.
-            String missing = describeMissingFeatures(currentSubsetSnapshot());
             setWarning(missing);
         }
-        applyButton.setDisable(currentClassifier == null || subset == 0);
+        applyButton.setDisable(subset == 0);
     }
 
-    private String describeMissingFeatures(List<PathObject> subset) {
-        if (currentClassifier == null || subset == null || subset.isEmpty()) {
+    private Collection<PathObject> currentSelection() {
+        return imageData.getHierarchy() != null
+                ? imageData.getHierarchy().getSelectionModel().getSelectedObjects()
+                : Collections.emptyList();
+    }
+
+    private int selectedObjectCount() {
+        return currentSelection().size();
+    }
+
+    private String describeMissingFeatures(ObjectClassifier<BufferedImage> classifier, List<PathObject> subset) {
+        if (classifier == null || subset == null || subset.isEmpty()) {
             return null;
         }
         try {
-            var missing = currentClassifier.getMissingFeatures(imageData, subset);
+            var missing = classifier.getMissingFeatures(imageData, subset);
             if (missing == null || missing.isEmpty()) {
                 return null;
             }
@@ -839,7 +1021,10 @@ public final class ClassifySubsetDialog {
         if (selected.isEmpty() && !includeUnclassified) {
             return null;
         }
-        return ClassFilter.of(selected, includeUnclassified);
+        return ClassFilter.of(selected, includeUnclassified,
+                includeDerivedCheck.isSelected()
+                        ? ClassFilter.MatchMode.INCLUDE_DERIVED
+                        : ClassFilter.MatchMode.EXACT);
     }
 
     /**
@@ -874,10 +1059,18 @@ public final class ClassifySubsetDialog {
     // -----------------------------------------------------------------------------
 
     private void clearCheckedClasses() {
-        for (ClassEntry entry : classListView.getItems()) {
-            entry.selectedProperty().set(false);
+        // Clear every row, not just the ones the Find box is showing - "Clear"
+        // has to mean the whole filter or the preview and the list disagree.
+        suppressPreview = true;
+        try {
+            for (ClassEntry entry : new ArrayList<>(allClassEntries)) {
+                entry.selectedProperty().set(false);
+            }
+        } finally {
+            suppressPreview = false;
         }
         checkedClasses.clear();
+        refreshCheckedCountLabel();
         recomputePreview();
     }
 
@@ -1047,9 +1240,7 @@ public final class ClassifySubsetDialog {
         currentClassifier = freshClassifier;
 
         SubsetCriteria criteria = buildCriteriaForPreview();
-        Collection<PathObject> selection = imageData.getHierarchy() != null
-                ? imageData.getHierarchy().getSelectionModel().getSelectedObjects()
-                : Collections.emptyList();
+        Collection<PathObject> selection = currentSelection();
 
         applyButton.setDisable(true);
         try {

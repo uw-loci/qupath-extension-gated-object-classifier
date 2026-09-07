@@ -89,6 +89,25 @@ straight into it.
    - **Class filter** - tick the checkbox next to each class you want to
      include. Tick `Include unclassified` to also include objects with no
      class.
+
+     On highly multiplexed data the class list runs to dozens of
+     combinatorial entries, and there are two controls for that:
+
+     - **Find** - type into the box above the list to show only the classes
+       containing that text, then click `Check shown` (or `Uncheck shown`)
+       to tick the whole visible group in one action. Classes hidden by the
+       search keep whatever state they had, so you can narrow to `CD8`,
+       check those, then narrow to `Gzb` and check those too. The counter to
+       the right of the list reads `N of M checked` so you can see at a
+       glance whether you missed one.
+     - **Include derived classes** - tick this and each class you check also
+       matches every class built from it. Checking `T cell` then also
+       matches `T cell: CD8` and `CD8: T cell`. Component names are matched
+       whole, so `CD3` never matches `CD31`. Checking a composite such as
+       `T cell: CD8` matches any class containing *both* components, e.g.
+       `T cell: CD8: PD1`. Leave it unticked (the default) for exact matches
+       only. `Include unclassified` is unaffected by it - unclassified means
+       unclassified either way.
    - **Measurement thresholds** - click `Add threshold` to add a row, then
      pick a measurement, an operator (`<`, `<=`, `>`, `>=`, `==`, `!=`,
      `between`), and one (or two) threshold values. Add more rows to gate on
@@ -161,6 +180,23 @@ ClassifySubsetScripts.runClassifySubset(
 )
 ```
 
+**Every class built on a marker**, without listing them one by one. With
+`includeDerived: true` the entries in `classes` match any classification
+containing them, so this reaches `CD3`, `CD3: CD8`, `CD8: CD3: PD1` and so
+on. Component names are matched whole rather than as a prefix, so `CD31`
+and `CD31: CD8` are left alone:
+
+```groovy
+ClassifySubsetScripts.runClassifySubset(
+    "Exhaustion-classifier",
+    [
+        source         : "CUSTOM",
+        classes        : [["CD3"]],
+        includeDerived : true
+    ]
+)
+```
+
 **Multiple thresholds** combined with AND (e.g. DAB mean above 0.2 *and*
 cell area between 50 and 200). Pass a `measurements` list of maps instead of
 the flat `measurement`/`op`/`value1` keys:
@@ -199,6 +235,7 @@ ClassifySubsetScripts.runClassifySubset(
 |----------------|---------------------|-----------------------------------------------------------------------|
 | `source`       | `String`            | `"ALL_COMPATIBLE"`, `"SELECTED_ONLY"`, `"CUSTOM"` (required).         |
 | `classes`      | `List`              | CUSTOM only. Each entry is either a `List<String>` of component names (recommended; reconstructed via `PathClass.fromCollection`, so colons in derived class chains round-trip safely) or a plain `String` (parsed via `PathClass.fromString`). Use `"(unclassified)"` for null-class. |
+| `includeDerived` | `Boolean`         | CUSTOM only. `true` also matches classes derived from those in `classes`, so `"T cell"` matches `"T cell: CD8"` and `"CD8: T cell"`. Names are matched whole (`"CD3"` never matches `"CD31"`). Defaults to `false` (exact matches only). |
 | `measurement`  | `String`            | CUSTOM only. Measurement name for a single threshold, as it appears in the measurement table. |
 | `op`           | `String`            | One of `LT, LE, GT, GE, EQ, NE, BETWEEN`.                             |
 | `value1`       | `Number`            | Primary threshold.                                                    |
@@ -233,6 +270,12 @@ A few things worth knowing once you start using the extension day-to-day:
   runs via `Run > Run for project`, there is no interactive selection,
   so `source: "SELECTED_ONLY"` will classify nothing. The extension
   logs a warning naming the image when this happens.
+- **The preview count settles a moment after you stop clicking.** On a
+  hierarchy of hundreds of thousands of objects, recounting the subset is
+  too slow to run for every individual checkbox click, so the count is
+  recomputed once your edits pause (about 150 ms) and the pass itself runs
+  off the UI thread. The dialog stays responsive while you tick classes;
+  the number catches up right behind you.
 - **Switching images closes the dialog.** If you change the active
   image while the dialog is open, the dialog closes itself - this
   prevents accidental Apply against the wrong image's hierarchy.
