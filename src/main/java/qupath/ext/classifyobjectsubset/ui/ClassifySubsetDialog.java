@@ -9,6 +9,7 @@ import javafx.collections.ObservableList;
 import javafx.collections.transformation.FilteredList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
@@ -16,6 +17,7 @@ import javafx.scene.control.ComboBox;
 import javafx.scene.control.Hyperlink;
 import javafx.scene.control.Label;
 import javafx.scene.control.ListView;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.RadioButton;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.Separator;
@@ -98,6 +100,12 @@ public final class ClassifySubsetDialog {
      */
     private static final long PREVIEW_DEBOUNCE_MS = 150;
 
+    /**
+     * How long a recount may run before the dialog says it is working. Below
+     * this the answer arrives faster than a user can notice it was missing.
+     */
+    private static final long BUSY_INDICATOR_DELAY_MS = 250;
+
     private static final String DOC_URL =
             "https://github.com/MichaelSNelson/qupath-extension-classify-object-subset#readme";
 
@@ -155,6 +163,8 @@ public final class ClassifySubsetDialog {
     // --- Preview
     private final Label previewLabel = new Label();
     private final Label warningLabel = new Label();
+    /** Small spinner shown beside the count while a recount is in flight. */
+    private final ProgressIndicator previewSpinner = new ProgressIndicator();
     private final Button showSelectionButton = new Button(resources.getString("label.preview.show"));
 
     // --- Actions
@@ -170,6 +180,14 @@ public final class ClassifySubsetDialog {
     private ExecutorService previewExecutor;
     /** Set while a bulk check/uncheck runs, so one recount follows the batch. */
     private boolean suppressPreview;
+    /**
+     * Delays the busy indicator so a recount that finishes quickly never shows
+     * one. Without this, ticking a class on a small image would flash a spinner
+     * for a few milliseconds, which reads as a glitch rather than as progress.
+     */
+    private final PauseTransition busyIndicatorDelay =
+            new PauseTransition(Duration.millis(BUSY_INDICATOR_DELAY_MS));
+    private boolean previewBusy;
 
     private ClassifySubsetDialog(QuPathGUI qupath, ImageData<BufferedImage> imageData) {
         this.qupath = qupath;
@@ -487,7 +505,14 @@ public final class ClassifySubsetDialog {
         docLink.setStyle("-fx-text-fill: -fx-accent; -fx-font-weight: bold;");
         docLink.setOnAction(e -> openDocumentation());
 
-        HBox row = new HBox(10, previewLabel, showSelectionButton, spacer(), docLink);
+        previewSpinner.setPrefSize(14, 14);
+        previewSpinner.setMinSize(14, 14);
+        previewSpinner.setMaxSize(14, 14);
+        previewSpinner.setVisible(false);
+        previewSpinner.setManaged(false);
+        previewSpinner.setTooltip(new Tooltip(resources.getString("tooltip.preview.counting")));
+
+        HBox row = new HBox(10, previewSpinner, previewLabel, showSelectionButton, spacer(), docLink);
         row.setAlignment(Pos.CENTER_LEFT);
 
         VBox box = new VBox(4, row, warningLabel);
@@ -541,6 +566,7 @@ public final class ClassifySubsetDialog {
         // The debounce fires once a burst of edits has settled; the recount
         // itself then runs off the FX thread.
         previewDebounce.setOnFinished(e -> launchPreview());
+        busyIndicatorDelay.setOnFinished(e -> setPreviewBusy(true));
         previewExecutor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "classify-subset-preview");
             t.setDaemon(true);
@@ -598,6 +624,8 @@ public final class ClassifySubsetDialog {
 
         stage.setOnHidden(e -> {
             previewDebounce.stop();
+            busyIndicatorDelay.stop();
+            setPreviewBusy(false);
             // Bump the generation so any in-flight background recount discards
             // its result instead of touching controls on a closed dialog.
             previewGeneration.incrementAndGet();
@@ -896,6 +924,7 @@ public final class ClassifySubsetDialog {
      */
     private void launchPreview() {
         if (currentClassifier == null) {
+            stopBusyIndicator();
             previewLabel.setText("");
             applyButton.setDisable(true);
             setWarning(null);
@@ -904,6 +933,7 @@ public final class ClassifySubsetDialog {
         List<PathObject> universe = universeCache;
         final int universeSize = universe.size();
         if (universeSize == 0) {
+            stopBusyIndicator();
             previewLabel.setText(MessageFormat.format(
                     resources.getString("label.preview.count"), 0, 0));
             setWarning(resources.getString("warning.incompatibleClassifier"));
@@ -921,8 +951,12 @@ public final class ClassifySubsetDialog {
 
         ExecutorService executor = previewExecutor;
         if (executor == null || executor.isShutdown()) {
+            stopBusyIndicator();
             return;
         }
+        // Arm the indicator rather than showing it: a fast recount beats the
+        // delay and the user never sees a spinner at all.
+        busyIndicatorDelay.playFromStart();
         executor.submit(() -> {
             int count;
             String missing;
@@ -941,6 +975,7 @@ public final class ClassifySubsetDialog {
                 if (generation != previewGeneration.get() || !stage.isShowing()) {
                     return;
                 }
+                stopBusyIndicator();
                 applyPreviewResult(finalCount, universeSize, finalMissing, selectedSourceEmpty);
             });
         });
@@ -959,6 +994,34 @@ public final class ClassifySubsetDialog {
             setWarning(missing);
         }
         applyButton.setDisable(subset == 0);
+    }
+
+    private void stopBusyIndicator() {
+        busyIndicatorDelay.stop();
+        setPreviewBusy(false);
+    }
+
+    /**
+     * Show or hide the "still counting" state: a spinner beside the count, the
+     * count replaced by a short message so a stale number is never mistaken for
+     * a current one, and a wait cursor on the whole dialog - the pointer is over
+     * the class list when this happens, not over the count, so the cursor is
+     * what the user actually sees.
+     */
+    private void setPreviewBusy(boolean busy) {
+        if (busy == previewBusy) {
+            return;
+        }
+        previewBusy = busy;
+        previewSpinner.setVisible(busy);
+        previewSpinner.setManaged(busy);
+        if (busy) {
+            previewLabel.setText(resources.getString("label.preview.counting"));
+        }
+        var scene = stage.getScene();
+        if (scene != null) {
+            scene.setCursor(busy ? Cursor.WAIT : Cursor.DEFAULT);
+        }
     }
 
     private Collection<PathObject> currentSelection() {

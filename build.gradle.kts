@@ -9,7 +9,7 @@ plugins {
 qupathExtension {
     name = "qupath-extension-classify-object-subset"
     group = "io.github.michaelsnelson"
-    version = "0.3.1"
+    version = "0.3.2"
     description = "Apply a saved object classifier to a chosen subset of objects in QuPath."
     automaticModule = "io.github.michaelsnelson.extension.classifyobjectsubset"
 }
