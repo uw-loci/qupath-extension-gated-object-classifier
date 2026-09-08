@@ -25,12 +25,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Guards the "N objects classified, M changed" numbers.
  *
  * <p>{@code ObjectClassifier.classifyObjects} is documented as returning the
- * number of objects whose classification changed, but the real implementations
- * return the number PROCESSED -- {@code OpenCVMLClassifier} ends its loop with
- * {@code counter += tempObjectList.size()}. Passing that value through made the
- * two numbers identical on every run (issue #3), so the runner now counts the
- * change itself. The fake classifier below deliberately reproduces the upstream
- * behaviour: it returns the processed count, not the changed count.</p>
+ * number of objects whose classification changed, but the implementations
+ * disagree: {@code SimpleClassifier} and {@code CompositeClassifier} do count
+ * changes, while {@code OpenCVMLClassifier} -- the kind "Train object
+ * classifier" produces, and so the kind most users run -- ends its loop with
+ * {@code counter += tempObjectList.size()} and returns objects PROCESSED.
+ * Because the value means different things depending on the classifier, the
+ * runner counts the change itself rather than trusting it. The fake classifier
+ * below reproduces the OpenCVMLClassifier behaviour, which is the case that
+ * made the two numbers identical on every run (issue #3).</p>
  */
 class SubsetClassificationRunnerTest {
 

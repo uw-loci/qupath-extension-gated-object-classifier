@@ -79,9 +79,16 @@ public final class SubsetClassificationRunner {
         // Snapshot the classifications so we can report how many actually
         // changed. ObjectClassifier.classifyObjects is documented as returning
         // "the number of objects whose classification was changed", but the
-        // implementations do not honour that - OpenCVMLClassifier ends its loop
-        // with `counter += tempObjectList.size()`, i.e. it counts objects
-        // PROCESSED. Passing that straight through made the notification read
+        // implementations disagree about that, so the return value cannot be
+        // trusted for this:
+        //   SimpleClassifier    - counts changes (compares before/after)
+        //   CompositeClassifier - counts changes (before/after maps)
+        //   OpenCVMLClassifier  - counts objects PROCESSED
+        //                         (`counter += tempObjectList.size()`)
+        //   Dnn / OpenCVModel   - count objects successfully classified, which
+        //                         is not the same question
+        // OpenCVMLClassifier is what "Train object classifier" produces, so in
+        // practice most users hit the processed count: the notification read
         // "132,331 objects classified, 132,331 changed" on every run (issue #3).
         PathClass[] classesBefore = new PathClass[subset.size()];
         for (int i = 0; i < classesBefore.length; i++) {
