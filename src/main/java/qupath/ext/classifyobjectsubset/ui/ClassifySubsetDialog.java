@@ -253,6 +253,19 @@ public final class ClassifySubsetDialog {
         // layout pass after the stage is shown so the transparent viewport
         // appears from the very first frame.
         stage.setOnShown(shownEvt -> Platform.runLater(() -> {
+            // Lay out the ROOT, not just the ScrollPane. On Windows with display
+            // scaling the first layout pass can leave the root at its pre-CSS
+            // preferred size while the stage is larger, and everything the root
+            // does not cover is painted by the Scene - whose default fill is
+            // white, so it reads as a bright L down the right and along the
+            // bottom of a dark-themed dialog (issue #2). Resizing the window by
+            // any amount fixed it, which is the tell that the geometry was fine
+            // and only the layout pass was missing.
+            root.applyCss();
+            root.layout();
+            // Belt and braces: repaint any area the root still does not cover in
+            // the theme's own colour rather than white.
+            applyThemedSceneFill(stage.getScene(), root);
             scroll.applyCss();
             scroll.requestLayout();
         }));
@@ -283,6 +296,10 @@ public final class ClassifySubsetDialog {
                 + java.util.Base64.getEncoder().encodeToString(
                         css.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
         stage.setScene(scene);
+        // Best-effort first attempt, so the very first frame is already themed.
+        // The theme's stylesheet may not resolve this early, in which case this
+        // is a no-op and the setOnShown handler above does it properly.
+        applyThemedSceneFill(scene, root);
         // Keep width roomy enough for the longest label; let height size to
         // content. Users can shrink the window - the ScrollPane takes over.
         stage.setMinWidth(520);
@@ -293,6 +310,31 @@ public final class ClassifySubsetDialog {
         populateClassifierNames();
         refreshSourceCounts();
         recomputePreview();
+    }
+
+    /**
+     * Paint the {@link Scene} in the same colour as the root's themed
+     * background, so any region the root does not cover matches the dialog
+     * instead of showing JavaFX's white default. A no-op while CSS has not yet
+     * resolved {@code -fx-base} into a real background, so it is called both
+     * before the stage is shown and again afterwards.
+     */
+    private static void applyThemedSceneFill(Scene scene, Region root) {
+        if (scene == null || root == null) {
+            return;
+        }
+        try {
+            root.applyCss();
+            var background = root.getBackground();
+            if (background != null && !background.getFills().isEmpty()) {
+                var paint = background.getFills().get(0).getFill();
+                if (paint != null) {
+                    scene.setFill(paint);
+                }
+            }
+        } catch (RuntimeException e) {
+            logger.debug("Could not resolve a themed scene fill", e);
+        }
     }
 
     // -----------------------------------------------------------------------------

@@ -9,7 +9,7 @@ plugins {
 qupathExtension {
     name = "qupath-extension-classify-object-subset"
     group = "io.github.michaelsnelson"
-    version = "0.3.0"
+    version = "0.3.1"
     description = "Apply a saved object classifier to a chosen subset of objects in QuPath."
     automaticModule = "io.github.michaelsnelson.extension.classifyobjectsubset"
 }
@@ -47,6 +47,15 @@ tasks.withType<JavaCompile> {
 
 tasks.test {
     useJUnitPlatform()
+    // The rule, rather than a roster that goes stale: a test here may TOUCH
+    // JavaFX but must never START the toolkit. These are classpath jars, not
+    // modules, so anything needing a real Stage/Scene/Platform.startup would
+    // need the openjfx Gradle plugin, a module path, --add-modules, and a
+    // display -- and would then fail on any headless machine, including in the
+    // pre-push hook. That is why ClassifySubsetDialog.applyThemedSceneFill (the
+    // issue #2 white-background fix) has no unit test: it takes a Scene, so it
+    // cannot be exercised without a toolkit. It is verified by looking at the
+    // dialog on Windows, not here.
 }
 // QuPath 0.7.0's maven artifacts are published as requiring JVM 25 (org.gradle.jvm.version=25),
 // even though the QuPath app runs on Java 21. options.release=21 makes Gradle resolve a

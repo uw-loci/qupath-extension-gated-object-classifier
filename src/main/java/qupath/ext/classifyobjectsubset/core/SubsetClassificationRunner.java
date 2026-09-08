@@ -8,11 +8,14 @@ import qupath.lib.objects.PathObject;
 import qupath.lib.objects.hierarchy.PathObjectHierarchy;
 
 import java.awt.image.BufferedImage;
+import qupath.lib.objects.classes.PathClass;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Orchestrates a single subset-classification run.
@@ -72,12 +75,45 @@ public final class SubsetClassificationRunner {
         }
 
         boolean resetExistingClass = !criteria.preserveExistingClass();
-        int nChanged;
+
+        // Snapshot the classifications so we can report how many actually
+        // changed. ObjectClassifier.classifyObjects is documented as returning
+        // "the number of objects whose classification was changed", but the
+        // implementations do not honour that - OpenCVMLClassifier ends its loop
+        // with `counter += tempObjectList.size()`, i.e. it counts objects
+        // PROCESSED. Passing that straight through made the notification read
+        // "132,331 objects classified, 132,331 changed" on every run (issue #3).
+        PathClass[] classesBefore = new PathClass[subset.size()];
+        for (int i = 0; i < classesBefore.length; i++) {
+            classesBefore[i] = subset.get(i).getPathClass();
+        }
+
+        int nProcessed;
         try {
-            nChanged = classifier.classifyObjects(imageData, subset, resetExistingClass);
+            nProcessed = classifier.classifyObjects(imageData, subset, resetExistingClass);
         } catch (RuntimeException e) {
             logger.error("Classifier threw while classifying the object subset", e);
             return Result.error("Classifier failed: " + e.getMessage());
+        }
+
+        int nChanged = 0;
+        for (int i = 0; i < classesBefore.length; i++) {
+            if (!Objects.equals(classesBefore[i], subset.get(i).getPathClass())) {
+                nChanged++;
+            }
+        }
+
+        // A zero return with a non-empty subset is how the classifier reports
+        // that it bailed out entirely (interrupted, or no feature extractor).
+        // Without this the run would be announced as a success that changed
+        // nothing, which looks identical to "the classifier agreed with every
+        // existing class".
+        if (nProcessed == 0) {
+            logger.warn("Classifier processed 0 of {} objects - it may have been interrupted, "
+                    + "or it has no feature extractor", subset.size());
+            return new Result(universe.size(), subset.size(), 0,
+                    "The classifier did not process any objects. It may have been interrupted, "
+                    + "or it cannot extract features for these objects.");
         }
 
         if (nChanged > 0) {
@@ -121,6 +157,11 @@ public final class SubsetClassificationRunner {
      * Outcome of a single run. {@code warning} is non-null when the run could
      * not classify anything (no compatible objects, empty subset) or when the
      * classifier reported missing features.
+     *
+     * <p>{@code nSelected} is how many objects the classifier was applied to;
+     * {@code nChanged} is how many of those ended up with a different
+     * classification than they started with, counted here rather than taken
+     * from the classifier's return value.</p>
      */
     public static final class Result {
         public final int nUniverse;
